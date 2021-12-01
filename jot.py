@@ -18,6 +18,7 @@ import pydoc
 JOT_DIR = '/home/dallan/jot/'
 EDITOR = 'vim'
 DB = JOT_DIR + 'jot.sqlite'
+snippet_width = 48
 
 def connect():
     undefined_db = not os.path.exists(DB)
@@ -37,8 +38,16 @@ def connect():
             sys.exit(_("Connection to sqlite db failed!"))
     return con 
 
-def summary_formatted(row):
-    nlen = 42
+def gen_symbol(gen):
+    if gen == 0:
+        return ['', '   ']
+    elif gen == 1:
+        return ['>', '  ']
+    else:
+        return [str(gen) + '>', ' ']
+
+def summary_formatted(row, nlen = snippet_width, gen = 0):
+    idWidth = 3
     sym_len = 4
     mlchr = '[+]'.rjust(sym_len)[:sym_len]
     elps = '...'.rjust(sym_len)[:sym_len]
@@ -53,15 +62,87 @@ def summary_formatted(row):
         note_summary = note_summary[:(nlen - sym_len)] + fore.GREEN + elps
     elif multiline: # and not too long
         note_summary = note_summary + fore.GREEN + mlchr
-    
-    return(fore.RED + back.GREY_11 + \
-           (row[2] if row[2] else '').center(12) + \
-           back.BLACK + ' ' + fore.HOT_PINK_1B + \
-           str(row[0]).rjust(3).ljust(4) + \
-           fore.GOLD_1 + (row[7] if row[7] else '').center(3) + \
-           fore.CYAN_1 + ' ' + note_summary + style.RESET)
+    due_str = fore.RED + back.GREY_11 + (row[2] if row[2] else '').center(12) + back.BLACK + ' '
+    id_str = fore.HOT_PINK_1B + str(row[0]).rjust(idWidth).ljust(idWidth + 1)
+    gen_parts = gen_symbol(gen)
+    gen_str = fore.GREY_50 + ' ' + gen_parts[0]
+    sts_str = fore.GOLD_1 + (row[7] if row[7] else '').center(3) + gen_parts[1]
+    note_str = fore.CYAN_1 + note_summary + style.RESET
+    return(due_str + id_str + gen_str + sts_str + note_str)
 
-def print_notes():
+def print_nested(): 
+    cursor = conn.cursor()
+    sql = ''' SELECT parent, child FROM Nest '''
+    parentChild = cursor.execute(sql).fetchall()
+    related = set(sum(parentChild, ())) # can prune some of these out if not ultimately needed
+    # https://stackoverflow.com/questions/10632839/transform-list-of-tuples-into-a-flat-list-or-a-matrix/35228431
+    sql2 = ''' SELECT notes_id FROM Notes '''
+    allItems = set(sum(cursor.execute(sql2).fetchall(), ()))
+    parentItems = set([pc[0] for pc in parentChild])
+    childItems = set([pc[1] for pc in parentChild])
+    middleItems = set(parentItems).intersection(set(childItems))
+    parentOnlys = set(parentItems) - set(childItems)
+    individuals = set(allItems) - set(related)
+    # print('allItems ' + str(allItems))
+    # print('parentItems ' + str(parentItems))
+    # print('childItems ' + str(childItems))
+    # print('related ' + str(related))
+    # print('middleItems ' + str(middleItems))
+    # print('individuals ' + str(individuals))
+    # print('parentOnlys ' + str(parentOnlys))
+    
+    # rational families
+    included = set()
+    for parent in parentOnlys:
+        print('H' + summary_formatted(query_row(parent), gen = 0))
+        included.add(parent)
+        included = print_children(parent, 0, included)
+        included = flatten2set(included)
+    # circular families as individuals
+    circular = related - included
+    for broken in circular:
+        included.add(broken)
+        print('!' + summary_formatted(query_row(broken), gen = 0))
+        #print(broken)
+    # everyone else, probably just individuals now
+    others  = allItems - included
+    for other in others:
+        included.add(other)
+        print('-' + summary_formatted(query_row(other), gen = 0))
+
+def flatten2set(object):
+    gather = []
+    for item in object:
+        if isinstance(item, (list, tuple, set)):
+            gather.extend(flatten2set(item))            
+        else:
+            gather.append(item)
+    return set(gather)
+
+def print_children(parent, generation, included):
+    cursor = conn.cursor()
+    sql = ''' SELECT child FROM Nest WHERE parent = ? '''
+    children = set(sum(cursor.execute(sql, (parent,)).fetchall(), ()))
+    included = included.union(children)
+    if len(children) > 0: # recursive
+        [print('d' + summary_formatted(query_row(child), gen = generation + 1)) for child in children]
+        return([print_children(child, generation + 1, included) for child in children])
+    else: # not recursive
+        return(included)
+
+def print_nestedOLD():
+    cursor = conn.cursor()
+    sql = ''' SELECT * FROM Notes
+               LEFT JOIN Status ON Notes.status_id = Status.status_id '''
+    # identify parents, pull their info and any of their children
+    sql_p = ''' SELECT parent FROM Nest '''
+    
+    rows = cursor.execute(sql)
+    conn.commit()
+    #for row in rows:
+        #print(summary_formatted(row))
+
+def print_flat():
     cursor = conn.cursor()
     sql = ''' SELECT * FROM Notes
                LEFT JOIN Status ON Notes.status_id = Status.status_id '''
@@ -70,11 +151,21 @@ def print_notes():
     for row in rows:
         print(summary_formatted(row))
 
-def print_note(note_id):
+def print_notes(mode = 'nested'):
+    if mode == 'flat':
+        print_flat()
+    elif mode == 'nested':
+        print_nested()
+    
+def query_row(note_id):
     cursor = conn.cursor()
     sql = ''' SELECT * FROM Notes LEFT JOIN Status ON Notes.status_id = Status.status_id WHERE notes_id = ? '''
     cursor.execute(sql, (note_id,))
     row = cursor.fetchone()
+    return(row)
+
+def print_note(note_id):
+    row = query_row(note_id)
     if not row:
         print('Note does not exist: ' + fore.HOT_PINK_1B + str(note_id))
     else:
@@ -92,19 +183,44 @@ def print_note(note_id):
 
 def remove_note(note_id):
     # may need to be expanded to check other tables?
+    print('Deleting note_id = ' + str(note_id))
     cursor = conn.cursor()
     sql_delete_query = "DELETE FROM Notes where notes_id = ?"
-    print('Deleting note_id = ' + str(note_id))
     cursor.execute(sql_delete_query, (str(note_id),))
     conn.commit()
-    return cursor.lastrowid
+    
+    sql_parents = "Select parent FROM Nest where child = ?"
+    cursor.execute(sql_parents, (note_id,))
+    conn.commit()
+    parents = cursor.fetchall()
+    parents = set(sum(parents, ())) 
+    print(parents)
+    
+    sql_orphans = "Select child FROM Nest where parent = ?"
+    cursor.execute(sql_orphans, (note_id,))
+    conn.commit()
+    orphans = cursor.fetchall()
+    orphans = set(sum(orphans, ())) 
+    print(orphans)
+    
+    sql_delete_nest = "DELETE FROM Nest WHERE parent = ? OR child = ?"
+    cursor.execute(sql_delete_nest, (note_id, note_id))
+    conn.commit()
+    
+    if orphans is not None and parents is not None:
+        sql_adopt = 'INSERT INTO Nest (parent, child) VALUES (?, ?)'
+        for parent in parents:
+            for orphan in orphans:
+                cursor.execute(sql_adopt, (parent, orphan))
+                conn.commit()
+                print(str(parent) + ' adopted ' + str(orphan))
 
-def input_note(description, status_id, due, note_id):
+def input_note(description, status_id, due, note_id, parent_id):
     longEntryFormat = description == "<long-entry-note>"
     if note_id is None:
-        add_note(description, status_id, due, longEntryFormat)
+        add_note(description, status_id, due, parent_id, longEntryFormat)
     else:
-        edit_note(description, status_id, due, note_id, longEntryFormat)
+        edit_note(description, status_id, due, note_id, parent_id, longEntryFormat)
 
 def long_entry_note(existingNote):
     f = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
@@ -116,7 +232,7 @@ def long_entry_note(existingNote):
         note = f.read()
     return(note.rstrip())
 
-def add_note(description, status_id, due, longEntryFormat):
+def add_note(description, status_id, due, parent_id, longEntryFormat):
     if longEntryFormat:
         description = long_entry_note('')
     cursor = conn.cursor()
@@ -124,9 +240,13 @@ def add_note(description, status_id, due, longEntryFormat):
     cursor.execute(sql, (description, status_id, due))
     conn.commit()
     print('Added note number: ' + fore.HOT_PINK_1B + str(cursor.lastrowid))
-    return cursor.lastrowid
+    if parent_id is not None:
+        sql2 = 'INSERT INTO Nest (parent, child) VALUES (?, ?)'
+        cursor.execute(sql2, (parent_id, cursor.lastrowid))
+        conn.commit()
+        print('Parent defined as: ' + fore.HOT_PINK_1B + str(parent_id))
 
-def edit_note(description, status_id, due, note_id, longEntryFormat):
+def edit_note(description, status_id, due, note_id, parent_id, longEntryFormat):
     cursor = conn.cursor()
     sql_old = 'SELECT * FROM Notes where notes_id = ?'
     cursor.execute(sql_old, (str(note_id),))
@@ -145,9 +265,11 @@ def edit_note(description, status_id, due, note_id, longEntryFormat):
     cursor.execute(sql, new_row)
     conn.commit()
     print('Edited note number: ' + fore.HOT_PINK_1B + str(cursor.lastrowid))
-    return cursor.lastrowid
-
-conn = connect()
+    if parent_id is not None:
+        sql2 = 'INSERT INTO Nest (parent, child) VALUES (?, ?)'
+        cursor.execute(sql2, (parent_id, cursor.lastrowid))
+        conn.commit()
+        print('Parent defined as: ' + fore.HOT_PINK_1B + str(parent_id))
 
 def valid_date(s):
     try:
@@ -156,36 +278,46 @@ def valid_date(s):
         msg = "not a valid date: {0!r}".format(s)
         raise argparse.ArgumentTypeError(msg)
 
-parser = argparse.ArgumentParser()
-parser.add_argument("-v", "--verbose", action = "store_true", help="increase output verbosity")
-parser.add_argument("-n", "--note", help="note, add/edit, in quotes if more than a word", nargs='?', const='<long-entry-note>', default=None)
-parser.add_argument("-e", "--edit", type=int, help="Edit existing note, argument: ID")
-parser.add_argument("-u", "--uncheck", type=int, help="Uncheck existing note, argument: ID")
-parser.add_argument("-c", "--check", type=int, help="Check existing note, argument: ID")
-parser.add_argument("-l", "--less", type=int, help="Display whole note to `less` [ID]")
-parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled")
-parser.add_argument("-d", "--duedate", help="The Due Date - format YYYY-MM-DD", type=valid_date)
-parser.add_argument("--rm", type=int, help="remove ID or list of IDs")
-args = parser.parse_args()
+def parse_inputs():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-v", "--verbose", action = "store_true", help="increase output verbosity")
+    parser.add_argument("-n", "--note", help="note, add/edit, in quotes if more than a word", nargs='?', const='<long-entry-note>', default=None)
+    parser.add_argument("-e", "--edit", type=int, help="Edit existing note, argument: ID")
+    parser.add_argument("-u", "--uncheck", type=int, help="Uncheck existing note, argument: ID")
+    parser.add_argument("-c", "--check", type=int, help="Check existing note, argument: ID")
+    parser.add_argument("-l", "--less", type=int, help="Display whole note to `less` [ID]")
+    parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled")
+    parser.add_argument("-d", "--duedate", help="The Due Date - format YYYY-MM-DD", type=valid_date)
+    parser.add_argument("--rm", type=int, help="remove ID or list of IDs")
+    parser.add_argument("-p", "--parent", type=int, help="Assign parent by note id")
+    parser.add_argument("--code", action = "store_true", help="Open python code for development")
+    args = parser.parse_args()
+    return(args if args else '')
 
-if args.note is not None or args.edit is not None or args.status is not None or args.duedate is not None:
-    input_note(description=args.note, status_id=args.status, due=args.duedate, note_id=args.edit)
-    if args.verbose:
+def main(args):
+    if args.code:
+        subprocess.call([EDITOR, JOT_DIR + 'jot.py'])
+    elif args.note is not None or args.edit is not None or args.status is not None or args.duedate is not None:
+        input_note(description=args.note, status_id=args.status, due=args.duedate, note_id=args.edit, parent_id=args.parent)
+        if args.verbose:
+            print_notes()
+    elif args.uncheck is not None:
+        input_note(description=None, status_id=2, due=None, note_id=args.uncheck, parent_id=None)
+    elif args.check is not None:
+        input_note(description=None, status_id=3, due=None, note_id=args.check, parent_id=None)
+    elif args.rm is not None:
+        remove_note(args.rm)
+        if args.verbose:
+            print_notes()
+    elif args.less is not None:
+        print_note(args.less)
+    else:
         print_notes()
-elif args.uncheck is not None:
-    input_note(description=args.note, status_id=2, due=args.duedate, note_id=args.uncheck)
-elif args.check is not None:
-    input_note(description=args.note, status_id=3, due=args.duedate, note_id=args.check)
-elif args.rm is not None:
-    remove_note(args.rm)
-    if args.verbose:
-        print_notes()
-elif args.less is not None:
-    print_note(args.less)
-else:
-    print_notes()
-
-
+    
+# MAIN SCRIPT
+conn = connect()
+args = parse_inputs()
+main(args)
 
 # def convertToBinaryData(filename):
 #     # Convert digital data to binary format
