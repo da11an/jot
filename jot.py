@@ -48,7 +48,7 @@ def gen_symbol(gen):
     elif gen > 2:
         return ['', ' `' + str(gen)+ '']
     elif gen == -1:
-        return ['', ' ?  ']
+        return ['', ' ? ']
 
 def summary_formatted(row, nlen = snippet_width, gen = 0):
     idWidth = 3
@@ -112,52 +112,11 @@ def print_nested():
     circular = parent_children - set(included)
     [print(summary_formatted(query_row(circ), gen = -1)) for circ in circular] 
     included.extend(list(circular))
-    print(included)
     cursor = conn.cursor()
     sql2 = ''' SELECT notes_id FROM Notes '''
     all_items = set(sum(cursor.execute(sql2).fetchall(), ()))
     singular = all_items - set(included)
     [print(summary_formatted(query_row(sing), gen = 0)) for sing in singular] 
-
-    
-def nothing():
-    cursor = conn.cursor()
-    sql = ''' SELECT parent, child FROM Nest '''
-    parentChild = cursor.execute(sql).fetchall()
-    related = set(sum(parentChild, ())) # can prune some of these out if not ultimately needed
-    # https://stackoverflow.com/questions/10632839/transform-list-of-tuples-into-a-flat-list-or-a-matrix/35228431
-    sql2 = ''' SELECT notes_id FROM Notes '''
-    allItems = set(sum(cursor.execute(sql2).fetchall(), ()))
-    parentItems = set([pc[0] for pc in parentChild])
-    childItems = set([pc[1] for pc in parentChild])
-    middleItems = set(parentItems).intersection(set(childItems))
-    parentOnlys = set(parentItems) - set(childItems)
-    individuals = set(allItems) - set(related)
-    # print('allItems ' + str(allItems))
-    # print('parentItems ' + str(parentItems))
-    # print('childItems ' + str(childItems))
-    # print('related ' + str(related))
-    # print('middleItems ' + str(middleItems))
-    # print('individuals ' + str(individuals))
-    # print('parentOnlys ' + str(parentOnlys))
-    
-    # rational families
-    included = set()
-    for parent in parentOnlys:
-        print('H' + summary_formatted(query_row(parent), gen = 0))
-        #included.add(parent)
-        included = print_tree(parent, 0, included)
-        included = flatten2set(included)
-    # circular families as individuals
-    circular = related - included
-    for broken in circular:
-        included.add(broken)
-        print('!' + summary_formatted(query_row(broken), gen = 0))
-    # everyone else, probably just individuals now
-    others  = allItems - included
-    for other in others:
-        included.add(other)
-        print('-' + summary_formatted(query_row(other), gen = 0))
 
 def flatten2set(object):
     gather = []
@@ -167,39 +126,6 @@ def flatten2set(object):
         else:
             gather.append(item)
     return set(gather)
-
-def print_tree(parent, generation, included):
-    print('here')
-    print('included:' + str(included))
-    included = included.add(parent)
-    print('T' + summary_formatted(query_row(parent), gen = generation))
-    cursor = conn.cursor()
-    sql = ''' SELECT child FROM Nest WHERE parent = ? '''
-    children = set(sum(cursor.execute(sql, (parent,)).fetchall(), ()))
-    print(children)
-    print(type(children))
-    if len(children) > 0: # recursive
-        #[print('d' + summary_formatted(query_row(child), gen = generation + 1)) for child in children]
-        for child in children:
-            print(child)
-            if child is not None:
-                return print_tree(child, generation + 1, included)
-        #return([print_tree(child, generation + 1, included) for child in children])
-    else: # not recursive
-        print('not recursive')
-        return(included)
-
-def print_nestedOLD():
-    cursor = conn.cursor()
-    sql = ''' SELECT * FROM Notes
-               LEFT JOIN Status ON Notes.status_id = Status.status_id '''
-    # identify parents, pull their info and any of their children
-    sql_p = ''' SELECT parent FROM Nest '''
-    
-    rows = cursor.execute(sql)
-    conn.commit()
-    #for row in rows:
-        #print(summary_formatted(row))
 
 def print_flat():
     cursor = conn.cursor()
