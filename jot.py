@@ -34,7 +34,7 @@ def connect():
             con = sqlite3.connect(DB)
             cursor = con.cursor()
         except:
-            print ('attempting to connect to ' + JOT_DIR)
+            print ('attempting to connect to ' + jot_dir)
             sys.exit(_("Connection to sqlite db failed!"))
     return con 
 
@@ -42,9 +42,13 @@ def gen_symbol(gen):
     if gen == 0:
         return ['', '   ']
     elif gen == 1:
-        return ['>', '  ']
-    else:
-        return [str(gen) + '>', ' ']
+        return ['', '|  ']
+    elif gen == 2:
+        return ['', ' ` ']
+    elif gen > 2:
+        return ['', ' `' + str(gen)+ '']
+    elif gen == -1:
+        return ['', ' ?  ']
 
 def summary_formatted(row, nlen = snippet_width, gen = 0):
     idWidth = 3
@@ -66,11 +70,57 @@ def summary_formatted(row, nlen = snippet_width, gen = 0):
     id_str = fore.HOT_PINK_1B + str(row[0]).rjust(idWidth).ljust(idWidth + 1)
     gen_parts = gen_symbol(gen)
     gen_str = fore.GREY_50 + ' ' + gen_parts[0]
-    sts_str = fore.GOLD_1 + (row[7] if row[7] else '').center(3) + gen_parts[1]
+    sts_str = fore.GOLD_1 + (row[7] if row[7] else '').center(3) + fore.GREY_50 + gen_parts[1]
     note_str = fore.CYAN_1 + note_summary + style.RESET
     return(due_str + id_str + gen_str + sts_str + note_str)
 
+def find_children(parent):
+    cursor = conn.cursor()
+    sql = ''' SELECT child FROM Nest WHERE parent = ? '''
+    children = list(sum(cursor.execute(sql, (parent,)).fetchall(), ()))
+    nest = [parent, [find_children(child) for child in children]]
+    return nest
+
+def family_tree():
+    cursor = conn.cursor()
+    sql_parents = ' SELECT parent FROM Nest '
+    sql_children = ' SELECT child FROM Nest '
+    parents = flatten2set(cursor.execute(sql_parents).fetchall())
+    children = flatten2set(cursor.execute(sql_children).fetchall())
+    last_children = children - parents
+    parent_children = children - last_children
+    first_parents = parents - parent_children
+    circular = 3
+    tree = list([find_children(parents) for parents in first_parents])
+    return tree, parent_children 
+
+def recursive_list_print(tree, gen = 0, included = []):
+    if not tree:
+        return included 
+    for el in tree:
+        if not isinstance(el, list):
+            real_gen = int((gen - 1)/2) + 1
+            print(summary_formatted(query_row(el), gen = real_gen))
+            included.append(el)
+        else:
+            recursive_list_print(el, gen + 1)
+    return included
+
 def print_nested(): 
+    tree, parent_children = family_tree()
+    included = recursive_list_print(tree)
+    circular = parent_children - set(included)
+    [print(summary_formatted(query_row(circ), gen = -1)) for circ in circular] 
+    included.extend(list(circular))
+    print(included)
+    cursor = conn.cursor()
+    sql2 = ''' SELECT notes_id FROM Notes '''
+    all_items = set(sum(cursor.execute(sql2).fetchall(), ()))
+    singular = all_items - set(included)
+    [print(summary_formatted(query_row(sing), gen = 0)) for sing in singular] 
+
+    
+def nothing():
     cursor = conn.cursor()
     sql = ''' SELECT parent, child FROM Nest '''
     parentChild = cursor.execute(sql).fetchall()
@@ -95,15 +145,14 @@ def print_nested():
     included = set()
     for parent in parentOnlys:
         print('H' + summary_formatted(query_row(parent), gen = 0))
-        included.add(parent)
-        included = print_children(parent, 0, included)
+        #included.add(parent)
+        included = print_tree(parent, 0, included)
         included = flatten2set(included)
     # circular families as individuals
     circular = related - included
     for broken in circular:
         included.add(broken)
         print('!' + summary_formatted(query_row(broken), gen = 0))
-        #print(broken)
     # everyone else, probably just individuals now
     others  = allItems - included
     for other in others:
@@ -119,15 +168,25 @@ def flatten2set(object):
             gather.append(item)
     return set(gather)
 
-def print_children(parent, generation, included):
+def print_tree(parent, generation, included):
+    print('here')
+    print('included:' + str(included))
+    included = included.add(parent)
+    print('T' + summary_formatted(query_row(parent), gen = generation))
     cursor = conn.cursor()
     sql = ''' SELECT child FROM Nest WHERE parent = ? '''
     children = set(sum(cursor.execute(sql, (parent,)).fetchall(), ()))
-    included = included.union(children)
+    print(children)
+    print(type(children))
     if len(children) > 0: # recursive
-        [print('d' + summary_formatted(query_row(child), gen = generation + 1)) for child in children]
-        return([print_children(child, generation + 1, included) for child in children])
+        #[print('d' + summary_formatted(query_row(child), gen = generation + 1)) for child in children]
+        for child in children:
+            print(child)
+            if child is not None:
+                return print_tree(child, generation + 1, included)
+        #return([print_tree(child, generation + 1, included) for child in children])
     else: # not recursive
+        print('not recursive')
         return(included)
 
 def print_nestedOLD():
