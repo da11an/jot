@@ -31,4 +31,4 @@ CREATE TABLE NoteFiler (
 
 --populate tables
 
-INSERT INTO Status(status) values ('-->'), ('[ ]'), ('[x]'), ('[0]');
+INSERT INTO Status(status) values ('-->'), ('[ ]'), ('[x]'), ('[0]'), ('[\]');
