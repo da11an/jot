@@ -208,7 +208,7 @@ def query_row(note_id):
 def print_note(note_id):
     row = query_row(note_id)
     if not row:
-        print('Note does not exist: ' + fore.HOT_PINK_1B + str(note_id))
+        print('Note does not exist: ' + str(note_id))
     else:
         pydoc.pipepager(
             ' ' + fore.GREY_62 + 'Created'.ljust(21) + \
@@ -283,12 +283,12 @@ def nest_parent_child(parent, child):
             sql_nest = 'INSERT INTO Nest (parent, child) VALUES (?, ?)'
             cursor.execute(sql_nest, (parent, child))
             conn.commit()
-            print('Parent defined as: ' + fore.HOT_PINK_1B + str(parent) + fore.WHITE)
+            print('Parent defined as: ' + str(parent))
         elif parent < 0 and child > 0: # remove parent link
             sql_unnest = 'DELETE FROM Nest WHERE parent = ? and child = ?'
             cursor.execute(sql_unnest, (abs(parent), child))
             conn.commit()
-            print('Parent removed ' + fore.HOT_PINK_1B + str(abs(parent)) + fore.WHITE)
+            print('Parent removed ' + str(abs(parent)))
         elif parent == 0 and child > 0: # remove all parents
             sql_unnest = 'DELETE FROM Nest WHERE child = ?'
             cursor.execute(sql_unnest, (child,))
@@ -303,7 +303,7 @@ def add_note(description, status_id, due, parent_id, longEntryFormat):
     sql = 'INSERT INTO Notes (description, status_id, due) VALUES (?, ?, ?)'
     cursor.execute(sql, (description, status_id, due))
     conn.commit()
-    print('Added note number: ' + fore.HOT_PINK_1B + str(cursor.lastrowid), fore.WHITE)
+    print('Added note number: ' + str(cursor.lastrowid))
     nest_parent_child(parent_id, cursor.lastrowid)
 
 def edit_note(description, status_id, due, note_id, parent_id, longEntryFormat):
@@ -324,7 +324,7 @@ def edit_note(description, status_id, due, note_id, parent_id, longEntryFormat):
     sql = 'INSERT or REPLACE into Notes VALUES (?, ?, ?, ?, ?, ?)'
     cursor.execute(sql, new_row)
     conn.commit()
-    print('Edited note number: ' + fore.HOT_PINK_1B + str(cursor.lastrowid))
+    print('Edited note number: ' + str(cursor.lastrowid))
     nest_parent_child(parent_id, note_id)
 
 def valid_date(s):
