@@ -209,13 +209,25 @@ def print_note(note_id):
     row = query_row(note_id)
     if not row:
         print('Note does not exist: ' + str(note_id))
-    else:
+    elif colorize:
         pydoc.pipepager(
             ' ' + fore.GREY_62 + 'Created'.ljust(21) + \
             fore.ORANGE_3 + 'Modified'.ljust(21) + \
             '\n ' + fore.GREY_62 + style.REVERSE + row[4].center(21) + \
             fore.ORANGE_3 + style.REVERSE + row[5].center(21) + \
             style.RESET + '\n\n' + \
+            note_header() + \
+            '\n' + summary_formatted(row) + \
+            '\n' + note_footer() + \
+            '\n' + '\n' + style.RESET + row[3] \
+            , cmd=view_note_cmd)
+    else:
+        pydoc.pipepager(
+            ' ' + 'Created'.ljust(21) + \
+            'Modified'.ljust(21) + \
+            '\n ' + row[4].center(21) + \
+            row[5].center(21) + \
+            '\n\n' + \
             note_header() + \
             '\n' + summary_formatted(row) + \
             '\n' + note_footer() + \
