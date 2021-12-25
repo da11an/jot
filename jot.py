@@ -14,11 +14,29 @@ import subprocess
 from ansi_escape_room import fore, back, style
 import pydoc
 
+
 # Settings ----
-JOT_DIR = '/home/dallan/jot/'
-EDITOR = 'vim'
-DB = JOT_DIR + 'jot.sqlite'
+
+## Preferences
 snippet_width = 48
+
+### Defaults
+#### windows config
+if os.name == 'nt':
+    EDITOR = 'notepad'
+    colorize = False 
+    view_note_cmd = "more"
+#### linux config
+else: 
+    EDITOR = 'nvim'
+    colorize = True 
+    view_note_cmd = "less -R"
+    
+## Directories
+JOT_DIR = os.path.dirname(sys.argv[0]) + '/'
+DB = JOT_DIR + 'jot.sqlite'
+
+# Functions ----
 
 def connect():
     undefined_db = not os.path.exists(DB)
@@ -40,11 +58,13 @@ def connect():
 
 def gen_symbol(gen):
     if gen == 0:
-        return ['', ' ']
-    elif gen > 0:
-        return ['', ''.ljust(gen, '#') + ' ']
+        return ['']
+    elif gen == 1:
+        return ['#'.ljust(gen, '>') + ' ']
+    elif gen > 1:
+        return ['>'.rjust(gen, '-') + ' ']
     elif gen == -1:
-        return ['', '? ']
+        return ['? ']
 
 def print_formatted(row, nlen = snippet_width, gen = 0, status_show = (None, 1, 2, 3, 4, 5)):
     result = summary_formatted(row, nlen = nlen, gen = gen, status_show = status_show)
@@ -53,29 +73,49 @@ def print_formatted(row, nlen = snippet_width, gen = 0, status_show = (None, 1, 
 
 def summary_formatted(row, nlen = snippet_width, gen = 0, status_show = (None, 1, 2, 3, 4, 5)):
     if row[6] in status_show:
-        nlen = nlen - abs(gen)
-        idWidth = 3
-        sym_len = 4
-        mlchr = '///'.rjust(sym_len)[:sym_len]
-        elps = '...'.rjust(sym_len)[:sym_len]
-        mlelps = './/'.rjust(sym_len)[:sym_len]
-        multiline = '\n' in row[3] 
-        note_summary = row[3].split('\n')[0]
-        nslen0 = len(note_summary)
-        tooLong = (nslen0 > (nlen - sym_len)) if multiline else (nslen0 > nlen)
-        if tooLong and multiline:
-            note_summary = note_summary[:(nlen - sym_len)] + fore.GREEN + mlelps
-        elif tooLong: # and not multiline
-            note_summary = note_summary[:(nlen - sym_len)] + fore.GREEN + elps
-        elif multiline: # and not too long
-            note_summary = note_summary + fore.GREEN + mlchr
-        due_str = fore.RED + back.GREY_11 + (row[2] if row[2] else '').center(12) + back.BLACK + ' '
-        id_str = fore.HOT_PINK_1B + str(row[0]).rjust(idWidth).ljust(idWidth + 1)
         gen_parts = gen_symbol(gen)
-        gen_str = fore.GREY_50 + ' ' + gen_parts[0]
-        sts_str = fore.GOLD_1 + (row[7] if row[7] else '').center(3) + fore.GREY_50 + gen_parts[1]
-        note_str = fore.CYAN_1 + note_summary + style.RESET
-        return(due_str + id_str + gen_str + sts_str + note_str)
+        sts_str = (row[7] if row[7] else '').center(3, '|')
+        gen_str = gen_parts[0]
+        
+        idWidth = 3
+        sym_len = 0
+        multiline = '\n' in row[3] 
+        note_summary = gen_str + row[3].split('\n')[0]
+        nslen0 = len(note_summary)
+        tooLong = nslen0 > nlen
+        if tooLong and multiline:
+            end_chr = '&'
+        elif tooLong: # and not multiline
+            end_chr = '~' 
+        elif multiline: # and not too long
+            end_chr = '+' 
+        else:
+            end_chr = '|'
+        note_summary = note_summary[:nlen].ljust(snippet_width) + end_chr
+        due_str = (row[2] if row[2] else '').center(10)
+        id_str = str(row[0]).rjust(idWidth)
+        note_str = note_summary
+        plain_summary = ' | ' + due_str + ' ' + sts_str + ' ' + id_str + ' | ' + note_str + ' ' 
+        return(colorize_summary(plain_summary))
+
+def colorize_summary(my_str):
+    if colorize:
+        sty = {}
+        sty[0] = fore.WHITE + back.BLACK
+        sty['date'] = fore.RED + back.GREY_11
+        sty['stat'] = fore.YELLOW + back.BLACK
+        sty['ind'] = fore.MAGENTA + back.BLACK
+        sty['note'] = fore.CYAN + back.BLACK
+        sty['end'] = fore.GREEN + back.BLACK
+        spacer = sty[0] + '|'
+        mydate = sty['date'] + my_str[2:14]
+        mystat = sty['stat'] + my_str[14:17]
+        myind = sty['ind'] + my_str[17:22]
+        mynote = sty['note'] + my_str[23:24+snippet_width]
+        myend = sty['end'] + my_str[24+snippet_width:25+snippet_width]
+        return(my_str[0:2] + mydate + mystat + myind + spacer + mynote + myend + sty[0])
+    else:
+        return(my_str)
 
 def find_children(parent):
     cursor = conn.cursor()
@@ -109,6 +149,15 @@ def recursive_list_print(tree, gen = 0, included = [], status_show = (None,1,2,3
             recursive_list_print(el, gen + 1, status_show = status_show)
     return included
 
+def note_header():
+    a=colorize_summary(' +------------+-+-----+-' + ''.ljust(snippet_width, '-') + '+')
+    b=colorize_summary(' |     Date   |?| Ind | Note ' + ''.ljust(snippet_width-5) + '|')
+    c=colorize_summary(' +------------+-+-----+-' + ''.ljust(snippet_width, '-') + '+')
+    return(a + '\n' + b + '\n' + c)
+
+def note_footer():
+    return(colorize_summary(' +------------+-+-----+-' + ''.ljust(snippet_width, '-') + '+'))
+
 def print_nested(status_show = (None,1,2,3,4,5)): 
     tree, parent_children = family_tree()
     included = recursive_list_print(tree, status_show = status_show)
@@ -130,21 +179,25 @@ def flatten2set(object):
             gather.append(item)
     return set(gather)
 
-def print_flat():
+def print_flat(status_show = (None,1,2,3,4,5)):
     cursor = conn.cursor()
     sql = ''' SELECT * FROM Notes
                LEFT JOIN Status ON Notes.status_id = Status.status_id '''
     rows = cursor.execute(sql)
     conn.commit()
     for row in rows:
-        print(summary_formatted(row))
+        myline = summary_formatted(row, status_show = status_show)
+        if myline:
+            print(myline)
 
 def print_notes(mode = 'nested', status_show = (None,1,2,3,4,5)):
+    print(note_header())
     if mode == 'flat':
-        print_flat()
+        print_flat(status_show = status_show)
     elif mode == 'nested':
         print_nested(status_show = status_show)
-    
+    print(note_footer())
+
 def query_row(note_id):
     cursor = conn.cursor()
     sql = ''' SELECT * FROM Notes LEFT JOIN Status ON Notes.status_id = Status.status_id WHERE notes_id = ? '''
@@ -158,16 +211,16 @@ def print_note(note_id):
         print('Note does not exist: ' + fore.HOT_PINK_1B + str(note_id))
     else:
         pydoc.pipepager(
-            fore.RED + 'Due Date'.ljust(12) + ' ' + \
-            fore.HOT_PINK_1B + 'ID'.ljust(4) + \
-            fore.GOLD_1 + 'STS' + fore.CYAN_1 + 'Note Snip' + \
-            fore.GREEN + 'pet' + \
-            '\n' + style.REVERSE + summary_formatted(row) + \
-            '\n' + fore.GREY_62 + 'Created'.ljust(21) + \
+            ' ' + fore.GREY_62 + 'Created'.ljust(21) + \
             fore.ORANGE_3 + 'Modified'.ljust(21) + \
-            '\n' + fore.GREY_62 + style.REVERSE + row[4].center(21) + \
+            '\n ' + fore.GREY_62 + style.REVERSE + row[4].center(21) + \
             fore.ORANGE_3 + style.REVERSE + row[5].center(21) + \
-            '\n' + '\n' + style.RESET + row[3], cmd='less -R')
+            style.RESET + '\n\n' + \
+            note_header() + \
+            '\n' + summary_formatted(row) + \
+            '\n' + note_footer() + \
+            '\n' + '\n' + style.RESET + row[3] \
+            , cmd=view_note_cmd)
 
 def remove_note(note_id):
     # may need to be expanded to check other tables?
@@ -205,6 +258,8 @@ def remove_note(note_id):
 
 def input_note(description, status_id, due, note_id, parent_id):
     longEntryFormat = description == "<long-entry-note>"
+    if due == "0001-01-01":
+        due = None
     if note_id is None:
         add_note(description, status_id, due, parent_id, longEntryFormat)
     else:
@@ -288,8 +343,9 @@ def parse_inputs():
     parser.add_argument("-u", "--uncheck", type=int, help="Uncheck existing note, argument: ID")
     parser.add_argument("-c", "--check", type=int, help="Check existing note, argument: ID")
     parser.add_argument("-l", "--less", type=int, help="Display whole note to `less` [ID]")
-    parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled")
-    parser.add_argument("-d", "--date", help="Key Date - format YYYY-MM-DD", type=valid_date)
+    parser.add_argument("-o", "--order", type=str, choices=['nested', 'flat'], help="order to print note summary, if missing defaults to default setting", default = 'nested')
+    parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4, 5], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled")
+    parser.add_argument("-d", "--date", help="Key Date - format YYYY-MM-DD", type=valid_date, nargs='?', const='0001-01-01', default=None)
     parser.add_argument("--rm", type=int, help="remove ID or list of IDs")
     parser.add_argument("-p", "--parent", nargs='?', const=0, default=None, type=int, help="Assign parent by note id, 0 or blank to remove all, -id to remove specific id")
     parser.add_argument("--code", action = "store_true", help="Open python code for development")
@@ -310,13 +366,13 @@ def main(args):
     elif args.less is not None:
         print_note(args.less)
     elif args.verbose:
-        print_notes(status_show = (None,1,2,3,4,5))
+        print_notes(mode = args.order, status_show = (None,1,2,3,4,5))
     elif args.review:
-        print_notes(status_show = (3,4))
-    else:
-        print_notes(status_show = (None,1,2,5))
+        print_notes(mode = args.order, status_show = (3,4))
+    else: # if no options, show active notes
+        print_notes(mode = args.order, status_show = (None,1,2,5))
     
-# MAIN SCRIPT
+# MAIN SCRIPT ----
 conn = connect()
 args = parse_inputs()
 main(args)
