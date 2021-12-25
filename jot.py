@@ -361,12 +361,15 @@ def parse_inputs():
     parser.add_argument("--rm", type=int, help="remove ID or list of IDs")
     parser.add_argument("-p", "--parent", nargs='?', const=0, default=None, type=int, help="Assign parent by note id, 0 or blank to remove all, -id to remove specific id")
     parser.add_argument("--code", action = "store_true", help="Open python code for development")
+    parser.add_argument("--readme", action = "store_true", help="Open README.md for editing")
     args = parser.parse_args()
     return(args if args else '')
 
 def main(args):
     if args.code:
         subprocess.call([EDITOR, os.path.join(JOT_DIR, 'jot.py')])
+    elif args.readme:
+        subprocess.call([EDITOR, os.path.join(JOT_DIR, 'README.md')])
     elif args.note is not None or args.edit is not None or args.status is not None or args.date is not None:
         input_note(description=args.note, status_id=args.status, due=args.date, note_id=args.edit, parent_id=args.parent)
     elif args.uncheck is not None:

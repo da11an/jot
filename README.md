@@ -14,3 +14,9 @@ command line task management interface and database
 - Typing `jot` (or `jot.py` without the soft link) gives a summary of active items
 - Items can be nested by assigning a parent
 - Ability to add attachments is envisioned in the database but not yet implemented
+
+## Windows
+
+- JOT usage in Windows is similar to Linux, but without color highlighting
+- Note that the correct version of Python needs to be used to call JOT: https://stackoverflow.com/questions/55656887/printing-output-of-python-script-to-windows-console-when-running-via-batch-file
+- To run python from the cloned directory: `python jot.py [...]`
