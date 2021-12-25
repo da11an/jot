@@ -231,7 +231,7 @@ def print_note(note_id):
             note_header() + \
             '\n' + summary_formatted(row) + \
             '\n' + note_footer() + \
-            '\n' + '\n' + style.RESET + row[3] \
+            '\n' + '\n' + row[3] \
             , cmd=view_note_cmd)
 
 def remove_note(note_id):
