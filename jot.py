@@ -33,8 +33,8 @@ else:
     view_note_cmd = "less -R"
     
 ## Directories
-JOT_DIR = os.path.dirname(sys.argv[0]) + '/'
-DB = JOT_DIR + 'jot.sqlite'
+JOT_DIR = os.path.dirname(sys.argv[0])
+DB = os.path.join(JOT_DIR, 'jot.sqlite')
 
 # Functions ----
 
@@ -52,7 +52,7 @@ def connect():
             con = sqlite3.connect(DB)
             cursor = con.cursor()
         except:
-            print ('attempting to connect to ' + jot_dir)
+            print ('attempting to connect to ' + JOT_DIR)
             sys.exit(_("Connection to sqlite db failed!"))
     return con 
 
@@ -354,7 +354,7 @@ def parse_inputs():
 
 def main(args):
     if args.code:
-        subprocess.call([EDITOR, JOT_DIR + 'jot.py'])
+        subprocess.call([EDITOR, os.path.join(JOT_DIR, 'jot.py')])
     elif args.note is not None or args.edit is not None or args.status is not None or args.date is not None:
         input_note(description=args.note, status_id=args.status, due=args.date, note_id=args.edit, parent_id=args.parent)
     elif args.uncheck is not None:
