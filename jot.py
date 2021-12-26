@@ -16,7 +16,7 @@ import pydoc
 
 
 class Jot:
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.defaults()
         self.connect()
         self.parse_inputs()
