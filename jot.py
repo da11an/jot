@@ -211,11 +211,8 @@ class Jot:
             if myline:
                 print(myline)
                 if found:
-                    text_len = len(self.args.find)
-                    text_pos = row[3].find(self.args.find)
-                    start = max(0, text_pos - 20)
-                    stop = start + text_len + 40
-                    print(row[3][start:stop])
+                    snip = [i for i in row[3].split('\n') if i.find(self.args.find)>=0] 
+                    [print('~' + snip + '~') for snip in snip]
     
     def print_notes(self, mode = 'nested', status_show = (None,1,2,3,4,5), find = None):
         if find is not None:
