@@ -133,7 +133,8 @@ class Jot:
     def search_notes(self, term):
         sql = ''' SELECT notes_id FROM Notes WHERE description LIKE ? '''
         found_id = self.cursor.execute(sql, ('%' + term + '%',)).fetchall()
-        print(found_id)
+        found_id = [tuple([i[0] for i in found_id])][0] # list of tuples to tuple for sqlite input format
+        return found_id
 
     def find_children(self, parent):
         sql = ''' SELECT child FROM Nest WHERE parent = ? '''
@@ -194,20 +195,36 @@ class Jot:
                 gather.append(item)
         return set(gather)
     
-    def print_flat(self, status_show = (None,1,2,3,4,5)):
-        sql = ''' SELECT * FROM Notes
-                   LEFT JOIN Status ON Notes.status_id = Status.status_id '''
-        rows = self.cursor.execute(sql)
+    def print_flat(self, status_show = (None,1,2,3,4,5), found = None):
+        if found is not None:
+            sql=   "SELECT * FROM Notes \
+                    LEFT JOIN Status ON Notes.status_id = Status.status_id \
+                    WHERE notes_id IN ({seq})".format(seq=','.join(['?']*len(found)))
+            rows = self.cursor.execute(sql, found)
+        else:
+            sql = ''' SELECT * FROM Notes
+                       LEFT JOIN Status ON Notes.status_id = Status.status_id '''
+            rows = self.cursor.execute(sql)
         self.conn.commit()
         for row in rows:
             myline = self.summary_formatted(row, status_show = status_show)
             if myline:
                 print(myline)
+                if found:
+                    text_len = len(self.args.find)
+                    text_pos = row[3].find(self.args.find)
+                    start = max(0, text_pos - 20)
+                    stop = start + text_len + 40
+                    print(row[3][start:stop])
     
-    def print_notes(self, mode = 'nested', status_show = (None,1,2,3,4,5)):
+    def print_notes(self, mode = 'nested', status_show = (None,1,2,3,4,5), find = None):
+        if find is not None:
+            found = self.search_notes(find)
+        else: # interpret this as no search, so show all
+            found = None 
         print(self.note_header())
-        if mode == 'flat':
-            self.print_flat(status_show = status_show)
+        if mode == 'flat' or find is not None:
+            self.print_flat(status_show = status_show, found = found)
         elif mode == 'nested':
             self.print_nested(status_show = status_show)
         print(self.note_footer())
@@ -350,6 +367,7 @@ class Jot:
         parser.add_argument("-l", "--less", type=int, help="Display whole note to `less` [ID]")
         parser.add_argument("-o", "--order", type=str, choices=['nested', 'flat'], help="order to print note summary, if missing defaults to default setting", default = 'nested')
         parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4, 5], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled")
+        parser.add_argument("-f", "--find", help="Find string within notes")
         parser.add_argument("-d", "--date", help="Key Date - format YYYY-MM-DD", type=self.valid_date, nargs='?', const='0001-01-01', default=None)
         parser.add_argument("--rm", type=int, help="remove ID or list of IDs")
         parser.add_argument("-p", "--parent", nargs='?', const=0, default=None, type=int, help="Assign parent by note id, 0 or blank to remove all, -id to remove specific id")
@@ -375,11 +393,11 @@ class Jot:
         elif args.less is not None:
             self.print_note(args.less)
         elif args.verbose:
-            self.print_notes(mode = args.order, status_show = (None,1,2,3,4,5))
+            self.print_notes(mode = args.order, status_show = (None,1,2,3,4,5), find = args.find)
         elif args.review:
-            self.print_notes(mode = args.order, status_show = (3,4))
+            self.print_notes(mode = args.order, status_show = (3,4), find = args.find)
         else: # if no options, show active notes
-            self.print_notes(mode = args.order, status_show = (None,1,2,5))
+            self.print_notes(mode = args.order, status_show = (None,1,2,5), find = args.find)
     
 if __name__ == "__main__":
     jot = Jot()
