@@ -211,7 +211,7 @@ class Jot:
             if myline:
                 print(myline)
                 if found:
-                    snip = [i for i in row[3].split('\n') if i.find(self.args.find)>=0] 
+                    snip = [i for i in row[3].lower().split('\n') if i.find(self.args.find.lower())>=0] 
                     [print('~' + snip + '~') for snip in snip]
     
     def print_notes(self, mode = 'nested', status_show = (None,1,2,3,4,5), find = None):
