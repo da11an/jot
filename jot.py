@@ -129,7 +129,12 @@ class Jot:
             return(my_str[0:1] + mydate + mystat + myind + spacer + mynote + myend)
         else:
             return(my_str)
-    
+   
+    def search_notes(self, term):
+        sql = ''' SELECT notes_id FROM Notes WHERE description LIKE ? '''
+        found_id = self.cursor.execute(sql, ('%' + term + '%',)).fetchall()
+        print(found_id)
+
     def find_children(self, parent):
         sql = ''' SELECT child FROM Nest WHERE parent = ? '''
         children = list(sum(self.cursor.execute(sql, (parent,)).fetchall(), ()))
