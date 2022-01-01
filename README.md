@@ -7,9 +7,7 @@ command line task management interface and database
 - Data is stored in a a sqlite3 database which is created the first time jot.py is run
 - An interface to the database is built in Python
 - A long-form note editing mode is available, and the editor is configurable, default is vim 
-- For easy access:
-    - Create a softlink in the folder jot is cloned to `ln -s jot.py jot`
-    - Add the jot *folder* to your path, e.g. add `export PATH=/my/path/to/jot:$PATH` to end of `.bashrc`
+- For easy access (Linux): add `alias jot='python3 /home/dallan/jot/jot.py'` to your `.bashrc`
 - Usage can be accessed by typing `jot --help` or `jot -h`
 - Typing `jot` (or `jot.py` without the soft link) gives a summary of active items
 - Items can be nested by assigning a parent
