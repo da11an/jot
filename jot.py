@@ -11,7 +11,6 @@ import os
 import argparse
 from datetime import datetime
 import subprocess
-from ansi_escape_room import fore, back, style
 import pydoc
 
 
@@ -27,7 +26,16 @@ class Jot:
         
         ## Preferences
         self.snippet_width = 48
-        
+        self.GREEN = '\x1b[38;5;2m'
+        self.YELLOW = '\x1b[38;5;3m'
+        self.MAGENTA = '\x1b[38;5;5m'
+        self.WHITE = '\x1b[38;5;15m'
+        self.CYAN = '\x1b[38;5;6m'
+        self.RED = '\x1b[38;5;1m'
+        self.BLUE = '\x1b[38;5;4m'
+        self.VIOLET = '\x1b[38;5;177m'
+        self.DEFAULT = self.WHITE
+
         ### Defaults
         #### windows config
         if os.name == 'nt':
@@ -100,25 +108,25 @@ class Jot:
             due_str = (row[2] if row[2] else '').center(10)
             id_str = str(row[0]).rjust(idWidth)
             note_str = note_summary
-            plain_summary = ' | ' + due_str + ' ' + sts_str + ' ' + id_str + ' | ' + note_str + ' ' 
+            plain_summary = '| ' + due_str + ' ' + sts_str + ' ' + id_str + ' | ' + note_str + ' ' 
             return(self.colorize_summary(plain_summary))
     
     def colorize_summary(self, my_str):
         if self.colorize:
             sty = {}
-            sty[0] = fore.WHITE + back.BLACK
-            sty['date'] = fore.RED + back.GREY_11
-            sty['stat'] = fore.YELLOW + back.BLACK
-            sty['ind'] = fore.MAGENTA + back.BLACK
-            sty['note'] = fore.CYAN + back.BLACK
-            sty['end'] = fore.GREEN + back.BLACK
+            sty[0] = self.DEFAULT
+            sty['date'] = self.RED
+            sty['stat'] = self.YELLOW
+            sty['ind'] = self.MAGENTA
+            sty['note'] = self.CYAN
+            sty['end'] = self.GREEN
             spacer = sty[0] + '|'
-            mydate = sty['date'] + my_str[2:14]
-            mystat = sty['stat'] + my_str[14:17]
-            myind = sty['ind'] + my_str[17:22]
-            mynote = sty['note'] + my_str[23:24+self.snippet_width]
-            myend = sty['end'] + my_str[24+self.snippet_width:25+self.snippet_width]
-            return(my_str[0:2] + mydate + mystat + myind + spacer + mynote + myend + sty[0])
+            mydate = sty['date'] + my_str[1:13]
+            mystat = sty['stat'] + my_str[13:16]
+            myind = sty['ind'] + my_str[16:21]
+            mynote = sty['note'] + my_str[22:23+self.snippet_width]
+            myend = sty['end'] + my_str[23+self.snippet_width:24+self.snippet_width] + sty[0]
+            return(my_str[0:1] + mydate + mystat + myind + spacer + mynote + myend)
         else:
             return(my_str)
     
@@ -153,13 +161,13 @@ class Jot:
         return included
     
     def note_header(self):
-        a=self.colorize_summary(' +------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+')
-        b=self.colorize_summary(' |     Date   |?| Ind | Note ' + ''.ljust(self.snippet_width-5) + '|')
-        c=self.colorize_summary(' +------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+')
+        a=self.colorize_summary('+------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+')
+        b=self.colorize_summary('|     Date   |?| Ind | Note ' + ''.ljust(self.snippet_width-5) + '|')
+        c=self.colorize_summary('+------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+')
         return(a + '\n' + b + '\n' + c)
     
     def note_footer(self):
-        return(self.colorize_summary(' +------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+'))
+        return(self.colorize_summary('+------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+'))
     
     def print_nested(self, status_show = (None,1,2,3,4,5)): 
         tree, parent_children = self.family_tree()
@@ -209,29 +217,13 @@ class Jot:
         row = self.query_row(note_id)
         if not row:
             print('Note does not exist: ' + str(note_id))
-        elif self.colorize:
-            pydoc.pipepager(
-                ' ' + fore.GREY_62 + 'Created'.ljust(21) + \
-                fore.ORANGE_3 + 'Modified'.ljust(21) + \
-                '\n ' + fore.GREY_62 + style.REVERSE + row[4].center(21) + \
-                fore.ORANGE_3 + style.REVERSE + row[5].center(21) + \
-                style.RESET + '\n\n' + \
-                self.note_header() + \
-                '\n' + self.summary_formatted(row) + \
-                '\n' + self.note_footer() + \
-                '\n' + '\n' + style.RESET + row[3] \
-                , cmd=self.view_note_cmd)
         else:
             pydoc.pipepager(
-                ' ' + 'Created'.ljust(21) + \
-                'Modified'.ljust(21) + \
-                '\n ' + row[4].center(21) + \
-                row[5].center(21) + \
-                '\n\n' + \
                 self.note_header() + \
                 '\n' + self.summary_formatted(row) + \
                 '\n' + self.note_footer() + \
-                '\n' + '\n' + row[3] \
+                '\n' + row[3] + \
+                '\n\n' + ('created ' + row[4] + ' & modified ' + row[5]).ljust(self.snippet_width + 17, ">").rjust(self.snippet_width + 24, "<") \
                 , cmd=self.view_note_cmd)
     
     def remove_note(self, note_id):
@@ -308,7 +300,7 @@ class Jot:
     
     def add_note(self, description, status_id, due, parent_id, longEntryFormat):
         if longEntryFormat:
-            description = long_entry_note('')
+            description = self.long_entry_note('')
         sql = 'INSERT INTO Notes (description, status_id, due) VALUES (?, ?, ?)'
         self.cursor.execute(sql, (description, status_id, due))
         self.conn.commit()
@@ -320,7 +312,7 @@ class Jot:
         self.cursor.execute(sql_old, (str(note_id),))
         row = self.cursor.fetchone()
         if longEntryFormat:
-            description = long_entry_note(str(row[3]))
+            description = self.long_entry_note(str(row[3]))
         new_row = (
                 row[0],
                 status_id if status_id is not None else row[1], \
