@@ -50,7 +50,14 @@ class Jot:
             
         ## Directories
         self.JOT_DIR = os.path.dirname(sys.argv[0])
-        self.DB = os.path.join(self.JOT_DIR, 'jot.sqlite')
+        ### Set DB directory to contents of DB_DIR if existing, otherwise, same as JOT_DIR
+        DB_VAR = os.path.join(self.JOT_DIR, 'DB_DIR')
+        if os.path.exists(DB_VAR):
+            with open(DB_VAR, 'r') as f:
+                self.DB_DIR = f.read().strip()
+        else:
+            self.DB_DIR = self.JOT_DIR
+        self.DB = os.path.join(self.DB_DIR, 'jot.sqlite')
 
     def connect(self):
         undefined_db = not os.path.exists(self.DB)
@@ -69,6 +76,15 @@ class Jot:
                 print ('attempting to connect to ' + self.JOT_DIR)
                 sys.exit(_("Connection to sqlite db failed!"))
     
+    def set_db_dir(self, path):
+        if path == 'pwd':
+            path = os.getcwd()
+        with open(os.path.join(self.JOT_DIR, 'DB_DIR'), 'w') as f:
+            f.write(path)
+        self.DB_DIR = path
+        self.DB = os.path.join(self.DB_DIR, 'jot.sqlite')
+        self.connect()
+
     def gen_symbol(self, gen):
         if gen == 0:
             return ['']
@@ -150,7 +166,6 @@ class Jot:
         last_children = children - parents
         parent_children = children - last_children
         first_parents = parents - parent_children
-        circular = 3
         tree = list([self.find_children(parents) for parents in first_parents])
         return tree, parent_children 
     
@@ -168,7 +183,7 @@ class Jot:
     
     def note_header(self):
         a=self.colorize_summary('+------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+')
-        b=self.colorize_summary('|     Date   |?| Ind | Note ' + ''.ljust(self.snippet_width-5) + '|')
+        b=self.colorize_summary('|     Date   |?| Ind | Note: ' + self.DB.rjust(self.snippet_width-7) + ' |')
         c=self.colorize_summary('+------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+')
         return(a + '\n' + b + '\n' + c)
     
@@ -366,15 +381,18 @@ class Jot:
         parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4, 5], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled")
         parser.add_argument("-f", "--find", help="Find string within notes")
         parser.add_argument("-d", "--date", help="Key Date - format YYYY-MM-DD", type=self.valid_date, nargs='?', const='0001-01-01', default=None)
-        parser.add_argument("--rm", type=int, help="remove ID or list of IDs")
+        parser.add_argument("-rm", type=int, help="remove ID or list of IDs")
         parser.add_argument("-p", "--parent", nargs='?', const=0, default=None, type=int, help="Assign parent by note id, 0 or blank to remove all, -id to remove specific id")
-        parser.add_argument("--code", action = "store_true", help="Open python code for development")
-        parser.add_argument("--readme", action = "store_true", help="Open README.md for editing")
+        parser.add_argument("-dir", help="set db directory to supplied argument (PATH) or current directory if none", nargs='?', const='pwd', default=None)
+        parser.add_argument("-code", action = "store_true", help="Open python code for development")
+        parser.add_argument("-readme", action = "store_true", help="Open README.md for editing")
         args = parser.parse_args()
         self.args = args if args else ''
     
     def main(self):
         args = self.args
+        if args.dir:
+            self.set_db_dir(args.dir)
         if args.code:
             subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'jot.py')])
         elif args.readme:
