@@ -50,21 +50,29 @@ class Jot:
             
         ## Directories
         self.JOT_DIR = os.path.dirname(sys.argv[0])
-        ### Set DB directory to contents of DB_DIR if existing, otherwise, same as JOT_DIR
-        DB_VAR = os.path.join(self.JOT_DIR, 'DB_DIR')
-        if os.path.exists(DB_VAR):
-            with open(DB_VAR, 'r') as f:
+        ### Set DB dir to contents of DB_DIR if existing, otherwise, same as JOT_DIR
+        DB_DIR = os.path.join(self.JOT_DIR, 'DB_DIR')
+        if os.path.exists(DB_DIR):
+            with open(DB_DIR, 'r') as f:
                 self.DB_DIR = f.read().strip()
         else:
             self.DB_DIR = self.JOT_DIR
-        self.DB = os.path.join(self.DB_DIR, 'jot.sqlite')
+        ### Set DB_NAME to contents of DB_NAME if existing, otherwise, jot.sqlite
+        DB_NAME = os.path.join(self.DB_DIR, 'DB_NAME')
+        if os.path.exists(DB_NAME):
+            with open(DB_NAME, 'r') as f:
+                self.DB_NAME = f.read().strip()
+        else:
+            self.DB_NAME = 'jot.sqlite'
+        self.DB = os.path.join(self.DB_DIR, self.DB_NAME)
 
     def connect(self):
         undefined_db = not os.path.exists(self.DB)
         if undefined_db:
+            print('creating new database: ' + self.DB)
             self.conn = sqlite3.connect(self.DB)
             self.cursor = self.conn.cursor()
-            sql_file = open("create_db.sql")
+            sql_file = open(os.path.join(self.JOT_DIR, "create_db.sql"))
             sql_as_string = sql_file.read()
             self.cursor.executescript(sql_as_string)
             self.conn.commit()
@@ -82,8 +90,13 @@ class Jot:
         with open(os.path.join(self.JOT_DIR, 'DB_DIR'), 'w') as f:
             f.write(path)
         self.DB_DIR = path
-        self.DB = os.path.join(self.DB_DIR, 'jot.sqlite')
-        self.connect()
+        self.DB = os.path.join(self.DB_DIR, self.DB_NAME)
+    
+    def set_db_name(self, name):
+        with open(os.path.join(self.JOT_DIR, 'DB_NAME'), 'w') as f:
+            f.write(name)
+        self.DB_NAME = name
+        self.DB = os.path.join(self.DB_DIR, self.DB_NAME)
 
     def gen_symbol(self, gen):
         if gen == 0:
@@ -378,12 +391,13 @@ class Jot:
         parser.add_argument("-c", "--check", type=int, help="Check existing note, argument: ID")
         parser.add_argument("-l", "--less", type=int, help="Display whole note to `less` [ID]")
         parser.add_argument("-o", "--order", type=str, choices=['nested', 'flat'], help="order to print note summary, if missing defaults to default setting", default = 'nested')
-        parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4, 5], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled")
+        parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4, 5], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled, 5=partial")
         parser.add_argument("-f", "--find", help="Find string within notes")
         parser.add_argument("-d", "--date", help="Key Date - format YYYY-MM-DD", type=self.valid_date, nargs='?', const='0001-01-01', default=None)
         parser.add_argument("-rm", type=int, help="remove ID or list of IDs")
         parser.add_argument("-p", "--parent", nargs='?', const=0, default=None, type=int, help="Assign parent by note id, 0 or blank to remove all, -id to remove specific id")
         parser.add_argument("-dir", help="set db directory to supplied argument (PATH) or current directory if none", nargs='?', const='pwd', default=None)
+        parser.add_argument("-dbname", help="set db name to supplied argument (filename including extension) or jot.sqlite if none", nargs='?', const='jot.sqlite', default=None)
         parser.add_argument("-code", action = "store_true", help="Open python code for development")
         parser.add_argument("-readme", action = "store_true", help="Open README.md for editing")
         args = parser.parse_args()
@@ -391,8 +405,18 @@ class Jot:
     
     def main(self):
         args = self.args
-        if args.dir:
+        
+        if args.dir and args.dbname:
             self.set_db_dir(args.dir)
+            self.set_db_name(args.dbname)
+            self.connect()
+        elif args.dir:
+            self.set_db_dir(args.dir)
+            self.connect()
+        elif args.dbname:
+            self.set_db_name(args.dbname)
+            self.connect()
+
         if args.code:
             subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'jot.py')])
         elif args.readme:
