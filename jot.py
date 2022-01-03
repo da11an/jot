@@ -194,9 +194,10 @@ class Jot:
             mydate = sty['date'] + my_str[1:13]
             mystat = sty['stat'] + my_str[13:16]
             myind = sty['ind'] + my_str[16:21]
+            mydiv = sty[0] + my_str[21:22]
             mynote = sty['note'] + my_str[22:23+self.snippet_width]
             myend = sty['end'] + my_str[23+self.snippet_width:24+self.snippet_width] + sty[0]
-            return(my_str[0:1] + mydate + mystat + myind + spacer + mynote + myend)
+            return(my_str[0:1] + mydate + mystat + myind + mydiv + mynote + myend)
         else:
             return(my_str)
    
@@ -227,7 +228,7 @@ class Jot:
         return self.colorize_summary('+------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+')
 
     def note_header(self):
-        return self.colorize_summary('|     Date   |?| Ind | Note: ' + self.DB.rjust(self.snippet_width-7) + ' |')
+        return self.colorize_summary('|     Date   |?| Ind | Note  ' + self.DB.rjust(self.snippet_width-7) + ' |')
     
     def nest_notes(self, my_ids):
         # calculate nesting of items
