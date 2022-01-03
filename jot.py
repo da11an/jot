@@ -12,6 +12,7 @@ import argparse
 from datetime import datetime
 import subprocess
 import pydoc
+import math
 
 
 class Jot:
@@ -80,6 +81,8 @@ class Jot:
             try:
                 self.conn = sqlite3.connect(self.DB)
                 self.cursor = self.conn.cursor()
+                self.cursor.execute('update Notes set status_id = 1 where status_id is null;') # set default status = 1 where missing - this line can be dropped once legacy versions are all updated
+                self.conn.commit()
             except:
                 print ('attempting to connect to ' + self.JOT_DIR)
                 sys.exit(_("Connection to sqlite db failed!"))
@@ -98,6 +101,24 @@ class Jot:
         self.DB_NAME = name
         self.DB = os.path.join(self.DB_DIR, self.DB_NAME)
 
+    def flatten2set(self, object):
+        gather = []
+        for item in object:
+            if isinstance(item, (list, tuple, set)):
+                gather.extend(self.flatten2set(item))            
+            else:
+                gather.append(item)
+        return set(gather)
+    
+    def flatten2list(self, object):
+        gather = []
+        for item in object:
+            if isinstance(item, (list, tuple, set)):
+                gather.extend(self.flatten2list(item))            
+            else:
+                gather.append(item)
+        return list(gather)
+    
     def gen_symbol(self, gen):
         if gen == 0:
             return ['']
@@ -108,13 +129,33 @@ class Jot:
         elif gen == -1:
             return ['? ']
     
-    def print_formatted(self, row, gen = 0, status_show = (None, 1, 2, 3, 4, 5)):
-        result = self.summary_formatted(row, gen = gen, status_show = status_show)
-        if result is not None:
+    def print_formatted(self, row, gen = 0, find = None):#, status_show = (None, 1, 2, 3, 4, 5)):
+        result = self.summary_formatted(row, gen = gen)#, status_show = status_show)
+        if result:
             print(result)
+            if find:
+                wid = self.snippet_width - len(find)
+                widh1 = math.ceil(wid/2)
+                widh2 = math.floor(wid/2)
+                snip = [i for i in row[3].lower().split('\n') if i.find(self.args.find.lower())>=0] 
+                for line in snip:
+                    context = ('~' + line + '~').split(find.lower())
+                    if len(line) > wid:
+                        context = ('~' + line + '~').split(find.lower())
+                        context_wid = [len(i) for i in context][0:2]
+                        if sum(context_wid) > wid:
+                            if context_wid[0] > widh1 and context_wid[1] > widh2:
+                                line = context[0][-widh1:] + find.upper() + context[1][:widh2] 
+                            elif context_wid[0] > widh1:
+                                line = context[0][-(wid-context_wid[1]):] + find.upper() + context[1]
+                            else:
+                                line = context[0] + find.upper() + context[1][:wid-context_wid[0]]
+                    else:
+                        line = context[0] + find.upper() + context[1]
+                    print('|                    | ' + line.ljust(self.snippet_width) + '|')
     
-    def summary_formatted(self, row, gen = 0, status_show = (None, 1, 2, 3, 4, 5)):
-        if row[6] in status_show:
+    def summary_formatted(self, row, gen = 0): #, status_show = (None, 1, 2, 3, 4, 5)):
+        #if row[6] in status_show:
             gen_parts = self.gen_symbol(gen)
             sts_str = (row[7] if row[7] else '').center(3, '|')
             gen_str = gen_parts[0]
@@ -165,10 +206,10 @@ class Jot:
         found_id = [tuple([i[0] for i in found_id])][0] # list of tuples to tuple for sqlite input format
         return found_id
 
-    def find_children(self, parent):
+    def find_children(self, parent, gen):
         sql = ''' SELECT child FROM Nest WHERE parent = ? '''
         children = list(sum(self.cursor.execute(sql, (parent,)).fetchall(), ()))
-        nest = [parent, [self.find_children(child) for child in children]]
+        nest = [parent, gen, [self.find_children(child, gen+1) for child in children]]
         return nest
     
     def family_tree(self):
@@ -179,80 +220,64 @@ class Jot:
         last_children = children - parents
         parent_children = children - last_children
         first_parents = parents - parent_children
-        tree = list([self.find_children(parents) for parents in first_parents])
+        tree = list([self.find_children(parents, 1) for parents in first_parents])
         return tree, parent_children 
     
-    def recursive_list_print(self, tree, gen = 0, included = [], status_show = (None,1,2,3,4,5)):
-        if not tree:
-            return included 
-        for el in tree:
-            if not isinstance(el, list):
-                real_gen = int((gen - 1)/2) + 1
-                self.print_formatted(self.query_row(el), gen = real_gen, status_show = status_show)
-                included.append(el)
-            else:
-                self.recursive_list_print(el, gen + 1, status_show = status_show)
-        return included
-    
+    def note_line(self):
+        return self.colorize_summary('+------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+')
+
     def note_header(self):
-        a=self.colorize_summary('+------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+')
-        b=self.colorize_summary('|     Date   |?| Ind | Note: ' + self.DB.rjust(self.snippet_width-7) + ' |')
-        c=self.colorize_summary('+------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+')
-        return(a + '\n' + b + '\n' + c)
+        return self.colorize_summary('|     Date   |?| Ind | Note: ' + self.DB.rjust(self.snippet_width-7) + ' |')
     
-    def note_footer(self):
-        return(self.colorize_summary('+------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+'))
-    
-    def print_nested(self, status_show = (None,1,2,3,4,5)): 
+    def nest_notes(self, my_ids):
+        # calculate nesting of items
         tree, parent_children = self.family_tree()
-        included = self.recursive_list_print(tree, status_show = status_show)
-        circular = parent_children - set(included)
-        [self.print_formatted(self.query_row(circ), gen = -1, status_show = status_show) for circ in circular] 
-        included.extend(list(circular))
-        sql2 = ''' SELECT notes_id FROM Notes '''
-        all_items = set(sum(self.cursor.execute(sql2).fetchall(), ()))
-        singular = all_items - set(included)
-        [self.print_formatted(self.query_row(sing), gen = 0, status_show = status_show) for sing in singular] 
+        id_gen = self.flatten2list(tree)
+        # filter nested items
+        id_gen = [[i, g] for i, g in zip(id_gen[::2], id_gen[1::2]) if i in my_ids]
+        id_gen = self.flatten2list(id_gen)
+        ids = id_gen[::2]
+        gens = id_gen[1::2]
+        # add unresolved nested items that are in my_ids
+        circular = parent_children - set(ids) & set(my_ids)
+        ids.extend(list(circular))
+        gens.extend([-1] * len(circular))
+        # add free items that are in my_ids
+        free = set(my_ids) - set(ids)
+        ids.extend(list(free))
+        gens.extend([0] * len(free))
+        return ids, gens
+
+    def print_nested(self, my_ids, find):#, status_show = (1,2,3,4,5)):
+        ids, gens = self.nest_notes(my_ids)
+        [self.print_formatted(self.query_row(i), g, find) for i, g in zip(ids, gens)]
+
+    def print_flat(self, my_ids, find):
+        [self.print_formatted(self.query_row(i), 0, find) for i in my_ids]
     
-    def flatten2set(self, object):
-        gather = []
-        for item in object:
-            if isinstance(item, (list, tuple, set)):
-                gather.extend(self.flatten2set(item))            
-            else:
-                gather.append(item)
-        return set(gather)
-    
-    def print_flat(self, status_show = (None,1,2,3,4,5), found = None):
-        if found is not None:
-            sql=   "SELECT * FROM Notes \
-                    LEFT JOIN Status ON Notes.status_id = Status.status_id \
-                    WHERE notes_id IN ({seq})".format(seq=','.join(['?']*len(found)))
-            rows = self.cursor.execute(sql, found)
-        else:
-            sql = ''' SELECT * FROM Notes
-                       LEFT JOIN Status ON Notes.status_id = Status.status_id '''
-            rows = self.cursor.execute(sql)
-        self.conn.commit()
-        for row in rows:
-            myline = self.summary_formatted(row, status_show = status_show)
-            if myline:
-                print(myline)
-                if found:
-                    snip = [i for i in row[3].lower().split('\n') if i.find(self.args.find.lower())>=0] 
-                    [print('~' + snip + '~') for snip in snip]
-    
-    def print_notes(self, mode = 'nested', status_show = (None,1,2,3,4,5), find = None):
+    def print_notes(self, mode = 'nested', status_show = (1,2,3,4,5), find = None):
+        sql = "SELECT notes_id FROM Notes \
+        WHERE status_id IN ({seq})".format(seq=','.join(['?']*len(status_show)))
+        sql_vars = status_show
+
+        # filter on search term if provided
         if find is not None:
             found = self.search_notes(find)
-        else: # interpret this as no search, so show all
-            found = None 
-        print(self.note_header())
-        if mode == 'flat' or find is not None:
-            self.print_flat(status_show = status_show, found = found)
+            if found is not None:
+                sql = sql + " AND notes_id IN ({nid})".format(nid=','.join(['?']*len(found)))
+                print(found)
+                sql_vars = sql_vars + found
+                print(sql_vars)
+        print(sql)
+        my_ids = list(sum(self.cursor.execute(sql, sql_vars).fetchall(), ()))
+        print(my_ids)
+        
+        print(self.note_line() + '\n' + self.note_header() + '\n' + self.note_line())
+        if mode == 'flat':
+            self.print_flat(my_ids, find)
         elif mode == 'nested':
-            self.print_nested(status_show = status_show)
-        print(self.note_footer())
+            self.print_nested(my_ids, find)
+        print(self.note_line())
     
     def query_row(self, note_id):
         sql = ''' SELECT * FROM Notes LEFT JOIN Status ON Notes.status_id = Status.status_id WHERE notes_id = ? '''
@@ -260,15 +285,15 @@ class Jot:
         row = self.cursor.fetchone()
         return(row)
     
-    def print_note(self, note_id):
+    def print_note(self, note_id, gen = 0):
         row = self.query_row(note_id)
         if not row:
             print('Note does not exist: ' + str(note_id))
         else:
             pydoc.pipepager(
-                self.note_header() + \
-                '\n' + self.summary_formatted(row) + \
-                '\n' + self.note_footer() + \
+                self.note_line() + '\n' + self.note_header() + '\n' + self.note_line() + \
+                '\n' + self.summary_formatted(row, gen) + \
+                '\n' + self.note_line() + \
                 '\n' + row[3] + \
                 '\n\n' + ('created ' + row[4] + ' & modified ' + row[5]).ljust(self.snippet_width + 17, ">").rjust(self.snippet_width + 24, "<") \
                 , cmd=self.view_note_cmd)
@@ -391,7 +416,7 @@ class Jot:
         parser.add_argument("-c", "--check", type=int, help="Check existing note, argument: ID")
         parser.add_argument("-l", "--less", type=int, help="Display whole note to `less` [ID]")
         parser.add_argument("-o", "--order", type=str, choices=['nested', 'flat'], help="order to print note summary, if missing defaults to default setting", default = 'nested')
-        parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4, 5], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled, 5=partial")
+        parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4, 5], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled, 5=partial", default=1)
         parser.add_argument("-f", "--find", help="Find string within notes")
         parser.add_argument("-d", "--date", help="Key Date - format YYYY-MM-DD", type=self.valid_date, nargs='?', const='0001-01-01', default=None)
         parser.add_argument("-rm", type=int, help="remove ID or list of IDs")
@@ -421,7 +446,7 @@ class Jot:
             subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'jot.py')])
         elif args.readme:
             subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'README.md')])
-        elif args.note is not None or args.edit is not None or args.status is not None or args.date is not None:
+        elif args.note is not None or args.edit is not None:
             self.input_note(description=args.note, status_id=args.status, due=args.date, note_id=args.edit, parent_id=args.parent)
         elif args.uncheck is not None:
             self.input_note(description=None, status_id=2, due=None, note_id=args.uncheck, parent_id=None)
@@ -432,11 +457,11 @@ class Jot:
         elif args.less is not None:
             self.print_note(args.less)
         elif args.verbose:
-            self.print_notes(mode = args.order, status_show = (None,1,2,3,4,5), find = args.find)
+            self.print_notes(mode = args.order, status_show = (1,2,3,4,5), find = args.find)
         elif args.review:
             self.print_notes(mode = args.order, status_show = (3,4), find = args.find)
         else: # if no options, show active notes
-            self.print_notes(mode = args.order, status_show = (None,1,2,5), find = args.find)
+            self.print_notes(mode = args.order, status_show = (1,2,5), find = args.find)
     
 if __name__ == "__main__":
     jot = Jot()
