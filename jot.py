@@ -265,13 +265,8 @@ class Jot:
             found = self.search_notes(find)
             if found is not None:
                 sql = sql + " AND notes_id IN ({nid})".format(nid=','.join(['?']*len(found)))
-                print(found)
                 sql_vars = sql_vars + found
-                print(sql_vars)
-        print(sql)
         my_ids = list(sum(self.cursor.execute(sql, sql_vars).fetchall(), ()))
-        print(my_ids)
-        
         print(self.note_line() + '\n' + self.note_header() + '\n' + self.note_line())
         if mode == 'flat':
             self.print_flat(my_ids, find)
