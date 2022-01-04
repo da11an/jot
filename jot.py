@@ -147,7 +147,7 @@ class Jot:
                                 line = context[0] + find.upper() + context[1][:wid-context_wid[0]]
                     else:
                         line = context[0] + find.upper() + context[1]
-                    print('|                    | ' + line.ljust(self.snippet_width) + '|')
+                    print(self.colorize_summary('|                     ' + line.ljust(self.snippet_width) + '|'))
     
     def summary_formatted(self, row, gen = 0):
         gen_parts = self.gen_symbol(gen)
@@ -173,40 +173,28 @@ class Jot:
         due_str = (row[2] if row[2] else '').center(10)
         id_str = str(row[0]).rjust(idWidth)
         note_str = note_summary
-        plain_summary = '| ' + due_str + ' ' + sts_str + ' ' + id_str + ' | ' + note_str + ' ' 
+        plain_summary = '| ' + due_str + ' ' + sts_str + ' ' + id_str + '  ' + note_str + ' ' 
         return(self.colorize_summary(plain_summary, gen, row[6], end_chr))
     
     def colorize_summary(self, my_str, gen = 0, status_id = 0, trim_key = 0):
         if self.colorize:
             sty = {}
             sty[0] = self.style_parser(15, 0)
-            sty['date'] = self.style_parser(11, 3)
-            sty['ind'] = self.style_parser(5, 3)
-            if status_id == 0:
-                sty['note'] = self.style_parser(6, 0)
-            elif status_id == 1:
-                sty['note'] = self.style_parser(180, 0)
-            elif status_id == 2:
-                sty['note'] = self.style_parser(46, 0)
-            elif status_id == 3:
-                sty['note'] = self.style_parser(38, 0)
-            elif status_id == 4:
-                sty['note'] = self.style_parser(161, 0)
-            elif status_id == 5:
-                sty['note'] = self.style_parser(112, 0)
+            sty['ind'] = self.style_parser(8 if status_id == 0 else 11, 3)
+            note_col = [8, 224, 46, 38, 136, 36]
+            sty['note'] = self.style_parser(note_col[status_id], 0)
+            sty['end'] = self.style_parser(8, 0 if trim_key == 0 else 5)
+            sty['date'] = sty['note']
             sty['stat'] = sty['note'] 
-            sty['end'] = self.style_parser(15, 0 if trim_key == 0 else 5)
-            spacer = sty[0] + '|'
             mydate = sty['date'] + my_str[1:13]
             mystat = sty['stat'] + my_str[13:16]
             myind = sty['ind'] + my_str[16:21]
-            gen_start = 23
-            gen_stop = 23 + abs(gen)
-            mydiv = sty[0] + my_str[21:22]
-            mygen = sty['note'] + my_str[22:gen_start] + sty[0] + my_str[gen_start:gen_stop]
-            mynote = sty['note'] + my_str[gen_stop:23+self.snippet_width]
-            myend = sty['end'] + my_str[23+self.snippet_width:24+self.snippet_width] + sty[0]
-            return(my_str[0:1] + mydate + mystat + myind + mydiv + mygen + mynote + myend)
+            gen_start = 22
+            gen_stop = 22 + abs(gen)
+            mygen = sty['ind'] + my_str[gen_start:gen_stop]
+            mynote = sty['note'] + my_str[gen_stop:22+self.snippet_width]
+            myend = sty['end'] + my_str[22+self.snippet_width:23+self.snippet_width] + sty[0]
+            return(sty['end'] + my_str[0:1] + mydate + mystat + myind + mygen + mynote + myend)
         else:
             return(my_str)
    
@@ -235,10 +223,10 @@ class Jot:
         return tree, parent_children 
     
     def note_line(self):
-        return self.colorize_summary('+------------+-+-----+-' + ''.ljust(self.snippet_width, '-') + '+')
+        return self.colorize_summary('+------------+-+-----+' + ''.ljust(self.snippet_width, '-') + '+')
 
     def note_header(self):
-        return self.colorize_summary('|     Date   |?| Ind | Note  ' + self.DB.rjust(self.snippet_width-7) + ' |')
+        return self.colorize_summary('|     Date   |?| Ind   Note ' + self.DB.rjust(self.snippet_width-7) + ' |')
     
     def nest_notes(self, my_ids):
         # calculate nesting of items
