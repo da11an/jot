@@ -27,15 +27,6 @@ class Jot:
         
         ## Preferences
         self.snippet_width = 48
-        self.GREEN = '\x1b[38;5;2m'
-        self.YELLOW = '\x1b[38;5;3m'
-        self.MAGENTA = '\x1b[38;5;5m'
-        self.WHITE = '\x1b[38;5;15m'
-        self.CYAN = '\x1b[38;5;6m'
-        self.RED = '\x1b[38;5;1m'
-        self.BLUE = '\x1b[38;5;4m'
-        self.VIOLET = '\x1b[38;5;177m'
-        self.DEFAULT = self.WHITE
 
         ### Defaults
         #### windows config
@@ -67,6 +58,9 @@ class Jot:
             self.DB_NAME = 'jot.sqlite'
         self.DB = os.path.join(self.DB_DIR, self.DB_NAME)
 
+    def style_parser(self, color = 15, style = 0):
+        return '\x1b[' + str(style) + ';38;5;' + str(color) + 'm'
+
     def connect(self):
         undefined_db = not os.path.exists(self.DB)
         if undefined_db:
@@ -96,6 +90,7 @@ class Jot:
         self.DB = os.path.join(self.DB_DIR, self.DB_NAME)
     
     def set_db_name(self, name):
+        name = name + '.sqlite'
         with open(os.path.join(self.JOT_DIR, 'DB_NAME'), 'w') as f:
             f.write(name)
         self.DB_NAME = name
@@ -123,14 +118,14 @@ class Jot:
         if gen == 0:
             return ['']
         elif gen == 1:
-            return ['#'.ljust(gen, '>') + ' ']
+            return ['>'.ljust(gen, '>') + ' ']
         elif gen > 1:
             return ['>'.rjust(gen, '-') + ' ']
         elif gen == -1:
             return ['? ']
     
-    def print_formatted(self, row, gen = 0, find = None):#, status_show = (None, 1, 2, 3, 4, 5)):
-        result = self.summary_formatted(row, gen = gen)#, status_show = status_show)
+    def print_formatted(self, row, gen = 0, find = None):
+        result = self.summary_formatted(row, gen = gen)
         if result:
             print(result)
             if find:
@@ -154,50 +149,64 @@ class Jot:
                         line = context[0] + find.upper() + context[1]
                     print('|                    | ' + line.ljust(self.snippet_width) + '|')
     
-    def summary_formatted(self, row, gen = 0): #, status_show = (None, 1, 2, 3, 4, 5)):
-        #if row[6] in status_show:
-            gen_parts = self.gen_symbol(gen)
-            sts_str = (row[7] if row[7] else '').center(3, '|')
-            gen_str = gen_parts[0]
-            
-            idWidth = 3
-            sym_len = 0
-            multiline = '\n' in row[3] 
-            note_summary = gen_str + row[3].split('\n')[0]
-            nslen0 = len(note_summary)
-            tooLong = nslen0 > self.snippet_width 
-            if tooLong and multiline:
-                end_chr = '&'
-            elif tooLong: # and not multiline
-                end_chr = '~' 
-            elif multiline: # and not too long
-                end_chr = '+' 
-            else:
-                end_chr = '|'
-            note_summary = note_summary[:self.snippet_width].ljust(self.snippet_width) + end_chr
-            due_str = (row[2] if row[2] else '').center(10)
-            id_str = str(row[0]).rjust(idWidth)
-            note_str = note_summary
-            plain_summary = '| ' + due_str + ' ' + sts_str + ' ' + id_str + ' | ' + note_str + ' ' 
-            return(self.colorize_summary(plain_summary))
+    def summary_formatted(self, row, gen = 0):
+        gen_parts = self.gen_symbol(gen)
+        sts_str = (row[7] if row[7] else '').center(3, '|')
+        gen_str = gen_parts[0]
+        
+        idWidth = 3
+        sym_len = 0
+        multiline = '\n' in row[3] 
+        note_summary = gen_str + row[3].split('\n')[0]
+        nslen0 = len(note_summary)
+        tooLong = nslen0 > self.snippet_width 
+        chr_key = ['|', '~', 'v', '&']
+        if tooLong and multiline:
+            end_chr = 3
+        elif tooLong: # and not multiline
+            end_chr = 1 
+        elif multiline: # and not too long
+            end_chr = 2 
+        else:
+            end_chr = 0
+        note_summary = note_summary[:self.snippet_width].ljust(self.snippet_width) + chr_key[end_chr]
+        due_str = (row[2] if row[2] else '').center(10)
+        id_str = str(row[0]).rjust(idWidth)
+        note_str = note_summary
+        plain_summary = '| ' + due_str + ' ' + sts_str + ' ' + id_str + ' | ' + note_str + ' ' 
+        return(self.colorize_summary(plain_summary, gen, row[6], end_chr))
     
-    def colorize_summary(self, my_str):
+    def colorize_summary(self, my_str, gen = 0, status_id = 0, trim_key = 0):
         if self.colorize:
             sty = {}
-            sty[0] = self.DEFAULT
-            sty['date'] = self.RED
-            sty['stat'] = self.YELLOW
-            sty['ind'] = self.MAGENTA
-            sty['note'] = self.CYAN
-            sty['end'] = self.GREEN
+            sty[0] = self.style_parser(15, 0)
+            sty['date'] = self.style_parser(11, 3)
+            sty['ind'] = self.style_parser(5, 3)
+            if status_id == 0:
+                sty['note'] = self.style_parser(6, 0)
+            elif status_id == 1:
+                sty['note'] = self.style_parser(180, 0)
+            elif status_id == 2:
+                sty['note'] = self.style_parser(46, 0)
+            elif status_id == 3:
+                sty['note'] = self.style_parser(38, 0)
+            elif status_id == 4:
+                sty['note'] = self.style_parser(161, 0)
+            elif status_id == 5:
+                sty['note'] = self.style_parser(112, 0)
+            sty['stat'] = sty['note'] 
+            sty['end'] = self.style_parser(15, 0 if trim_key == 0 else 5)
             spacer = sty[0] + '|'
             mydate = sty['date'] + my_str[1:13]
             mystat = sty['stat'] + my_str[13:16]
             myind = sty['ind'] + my_str[16:21]
+            gen_start = 23
+            gen_stop = 23 + abs(gen)
             mydiv = sty[0] + my_str[21:22]
-            mynote = sty['note'] + my_str[22:23+self.snippet_width]
+            mygen = sty['note'] + my_str[22:gen_start] + sty[0] + my_str[gen_start:gen_stop]
+            mynote = sty['note'] + my_str[gen_stop:23+self.snippet_width]
             myend = sty['end'] + my_str[23+self.snippet_width:24+self.snippet_width] + sty[0]
-            return(my_str[0:1] + mydate + mystat + myind + mydiv + mynote + myend)
+            return(my_str[0:1] + mydate + mystat + myind + mydiv + mygen + mynote + myend)
         else:
             return(my_str)
    
@@ -220,7 +229,8 @@ class Jot:
         children = self.flatten2set(self.cursor.execute(sql_children).fetchall())
         last_children = children - parents
         parent_children = children - last_children
-        first_parents = parents - parent_children
+        first_parents = list(parents - parent_children)
+        first_parents.sort()
         tree = list([self.find_children(parents, 1) for parents in first_parents])
         return tree, parent_children 
     
@@ -241,11 +251,15 @@ class Jot:
         gens = id_gen[1::2]
         # add unresolved nested items that are in my_ids
         circular = parent_children - set(ids) & set(my_ids)
-        ids.extend(list(circular))
+        circular = list(circular)
+        circular.sort()
+        ids.extend(circular)
         gens.extend([-1] * len(circular))
         # add free items that are in my_ids
         free = set(my_ids) - set(ids)
-        ids.extend(list(free))
+        free = list(free)
+        free.sort()
+        ids.extend(free)
         gens.extend([0] * len(free))
         return ids, gens
 
@@ -306,14 +320,12 @@ class Jot:
         self.conn.commit()
         parents = self.cursor.fetchall()
         parents = set(sum(parents, ())) 
-        print(parents)
         
         sql_orphans = "Select child FROM Nest where parent = ?"
         self.cursor.execute(sql_orphans, (note_id,))
         self.conn.commit()
         orphans = self.cursor.fetchall()
         orphans = set(sum(orphans, ())) 
-        print(orphans)
         
         sql_delete_nest = "DELETE FROM Nest WHERE parent = ? OR child = ?"
         self.cursor.execute(sql_delete_nest, (note_id, note_id))
@@ -418,7 +430,7 @@ class Jot:
         parser.add_argument("-rm", type=int, help="remove ID or list of IDs")
         parser.add_argument("-p", "--parent", nargs='?', const=0, default=None, type=int, help="Assign parent by note id, 0 or blank to remove all, -id to remove specific id")
         parser.add_argument("-dir", help="set db directory to supplied argument (PATH) or current directory if none", nargs='?', const='pwd', default=None)
-        parser.add_argument("-dbname", help="set db name to supplied argument (filename including extension) or jot.sqlite if none", nargs='?', const='jot.sqlite', default=None)
+        parser.add_argument("-dbname", help="set db name to supplied argument (filename excluding `.sqlite` extension) or jot (default) if none", nargs='?', const='jot', default=None)
         parser.add_argument("-code", action = "store_true", help="Open python code for development")
         parser.add_argument("-readme", action = "store_true", help="Open README.md for editing")
         args = parser.parse_args()
@@ -426,7 +438,7 @@ class Jot:
     
     def main(self):
         args = self.args
-        
+        # Set Preferences
         if args.dir and args.dbname:
             self.set_db_dir(args.dir)
             self.set_db_name(args.dbname)
@@ -437,20 +449,22 @@ class Jot:
         elif args.dbname:
             self.set_db_name(args.dbname)
             self.connect()
-
-        if args.code:
-            subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'jot.py')])
-        elif args.readme:
-            subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'README.md')])
-        elif args.note is not None or args.edit is not None:
+        # Input
+        if args.code or args.readme:
+            if args.code:
+                subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'jot.py')])
+            if args.readme:
+                subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'README.md')])
+        elif args.note or args.edit:
             self.input_note(description=args.note, status_id=args.status, due=args.date, note_id=args.edit, parent_id=args.parent)
-        elif args.uncheck is not None:
-            self.input_note(description=None, status_id=2, due=None, note_id=args.uncheck, parent_id=None)
-        elif args.check is not None:
+        elif args.check:
             self.input_note(description=None, status_id=3, due=None, note_id=args.check, parent_id=None)
-        elif args.rm is not None:
+        elif args.uncheck:
+            self.input_note(description=None, status_id=2, due=None, note_id=args.uncheck, parent_id=None)
+        elif args.rm:
             self.remove_note(args.rm)
-        elif args.less is not None:
+        # Output    
+        if args.less:
             self.print_note(args.less)
         elif args.verbose:
             self.print_notes(mode = args.order, status_show = (1,2,3,4,5), find = args.find)
