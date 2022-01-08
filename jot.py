@@ -178,12 +178,12 @@ class Jot:
     
     def colorize_summary(self, my_str, gen = 0, status_id = 0, trim_key = 0):
         if self.colorize:
-            palette = [248, 224,  46,  34, 136,  36,  15] # see ansi 256 color codes
-            #      [border, -->, [ ], [x], [0], [/], default]
+            palette = [248, 217,  46,  34, 136,  36, 147,  15] # see ansi 256 color codes: https://www.ditig.com/256-colors-cheat-sheet
+            #      [border, -->, [ ], [x], [0], [/], ind, default]
             note_col = palette[0:6]
             sty = {}
-            sty[0] = self.style_parser(palette[6], 0)
-            sty['ind'] = self.style_parser(palette[0] if status_id == 0 else 11, 3)
+            sty[0] = self.style_parser(palette[7], 0)
+            sty['ind'] = self.style_parser(palette[0] if status_id == 0 else palette[6], 3)
             sty['note'] = self.style_parser(note_col[status_id], 0)
             sty['end'] = self.style_parser(palette[0], 0 if trim_key == 0 else 5)
             sty['date'] = sty['note']
