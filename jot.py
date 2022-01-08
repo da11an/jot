@@ -154,7 +154,7 @@ class Jot:
         sts_str = (row[7] if row[7] else '').center(3, '|')
         gen_str = gen_parts[0]
         
-        idWidth = 3
+        idWidth = 5
         sym_len = 0
         multiline = '\n' in row[3] 
         note_summary = gen_str + row[3].split('\n')[0]
@@ -173,7 +173,7 @@ class Jot:
         due_str = (row[2] if row[2] else '').center(10)
         id_str = str(row[0]).rjust(idWidth)
         note_str = note_summary
-        plain_summary = '| ' + due_str + ' ' + sts_str + ' ' + id_str + '  ' + note_str + ' ' 
+        plain_summary = '| ' + due_str + ' ' + sts_str + '' + id_str + ' ' + note_str + ' ' 
         return(self.colorize_summary(plain_summary, gen, row[6], end_chr))
     
     def colorize_summary(self, my_str, gen = 0, status_id = 0, trim_key = 0):
@@ -190,7 +190,7 @@ class Jot:
             sty['stat'] = sty['note'] 
             mydate = sty['date'] + my_str[1:13]
             mystat = sty['stat'] + my_str[13:16]
-            myind = sty['ind'] + my_str[16:21]
+            myind = sty['ind'] + my_str[16:22]
             gen_start = 22
             gen_stop = 22 + abs(gen)
             mygen = sty['ind'] + my_str[gen_start:gen_stop]
@@ -423,6 +423,7 @@ class Jot:
         parser.add_argument("-dbname", help="set db name to supplied argument (filename excluding `.sqlite` extension) or jot (default) if none", nargs='?', const='jot', default=None)
         parser.add_argument("-code", action = "store_true", help="Open python code for development")
         parser.add_argument("-readme", action = "store_true", help="Open README.md for editing")
+        parser.add_argument("-sqlite", action = "store_true", help="Open create.sqlite for editing")
         args = parser.parse_args()
         self.args = args if args else ''
     
@@ -440,11 +441,13 @@ class Jot:
             self.set_db_name(args.dbname)
             self.connect()
         # Input
-        if args.code or args.readme:
+        if args.code or args.readme or args.sqlite:
             if args.code:
                 subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'jot.py')])
             if args.readme:
                 subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'README.md')])
+            if args.sqlite:
+                subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'create_db.sql')])
         elif args.note or args.edit:
             self.input_note(description=args.note, status_id=args.status, due=args.date, note_id=args.edit, parent_id=args.parent)
         elif args.check:
