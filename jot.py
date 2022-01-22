@@ -391,8 +391,8 @@ class Jot:
                     print(str(parent) + ' adopted ' + str(orphan))
     
     def input_note(self, description, status_id, due, priority, alias, note_id, parent_id):
-        if len(note_id) > 1:
-            print("You cannot assign an alias to multiple ids as once")
+        if len(note_id) > 1 or str(alias).isdigit():
+            print("You cannot assign an alias to multiple ids as once; alias cannot be a number")
             alias = None
         sql_alias_check = 'SELECT EXISTS(SELECT 1 FROM Notes WHERE alias = ?);'
         self.cursor.execute(sql_alias_check, (alias,))
