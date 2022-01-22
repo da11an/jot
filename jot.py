@@ -75,8 +75,16 @@ class Jot:
             try:
                 self.conn = sqlite3.connect(self.DB)
                 self.cursor = self.conn.cursor()
+
+                # this block can be dropped once legacy versions are all updated
                 self.cursor.execute('update Notes set status_id = 1 where status_id is null;') # set default status = 1 where missing - this line can be dropped once legacy versions are all updated
+                try:
+                    self.cursor.execute('alter table Notes add column Priority int;') # this line can be dropped once legacy versions are all updated
+                    self.cursor.execute('alter table Notes add column Alias text;') # this line can be dropped once legacy versions are all updated
+                except:
+                    'nothing at all to do here, table already up to date'
                 self.conn.commit()
+
             except:
                 print ('attempting to connect to ' + self.JOT_DIR)
                 sys.exit(_("Connection to sqlite db failed!"))
@@ -151,7 +159,7 @@ class Jot:
     
     def summary_formatted(self, row, gen = 0):
         gen_parts = self.gen_symbol(gen)
-        sts_str = (row[7] if row[7] else '').center(3, '|')
+        sts_str = (row[9] if row[9] else '').center(3, '|')
         gen_str = gen_parts[0]
         
         idWidth = 5
@@ -171,10 +179,10 @@ class Jot:
             end_chr = 0
         note_summary = note_summary[:self.snippet_width].ljust(self.snippet_width) + chr_key[end_chr]
         due_str = (row[2] if row[2] else '').center(10)
-        id_str = str(row[0]).rjust(idWidth)
+        id_str = row[7][:idWidth].rjust(idWidth) if row[7] else str(row[0]).rjust(idWidth)
         note_str = note_summary
-        plain_summary = '| ' + due_str + ' ' + sts_str + '' + id_str + ' ' + note_str + ' ' 
-        return(self.colorize_summary(plain_summary, gen, row[6], end_chr))
+        plain_summary = '| ' + due_str + ' ' + sts_str + '' + id_str + ' ' + note_str + ' '
+        return(self.colorize_summary(plain_summary, gen, row[8], end_chr))
     
     def colorize_summary(self, my_str, gen = 0, status_id = 0, trim_key = 0):
         if self.colorize:
@@ -253,7 +261,7 @@ class Jot:
         gens.extend([0] * len(free))
         return ids, gens
 
-    def print_nested(self, my_ids, find):#, status_show = (1,2,3,4,5)):
+    def print_nested(self, my_ids, find):
         ids, gens = self.nest_notes(my_ids)
         [self.print_formatted(self.query_row(i), g, find) for i, g in zip(ids, gens)]
 
@@ -266,11 +274,12 @@ class Jot:
         sql_vars = status_show
 
         # filter on search term if provided
-        if find is not None:
+        if find:
             found = self.search_notes(find)
             if found is not None:
                 sql = sql + " AND notes_id IN ({nid})".format(nid=','.join(['?']*len(found)))
                 sql_vars = sql_vars + found
+        
         my_ids = list(sum(self.cursor.execute(sql, sql_vars).fetchall(), ()))
         print(self.note_line() + '\n' + self.note_header() + '\n' + self.note_line())
         if mode == 'flat':
@@ -297,7 +306,59 @@ class Jot:
                 '\n' + row[3] + \
                 '\n\n' + ('created ' + row[4] + ' & modified ' + row[5]).ljust(self.snippet_width + 17, ">").rjust(self.snippet_width + 24, "<") \
                 , cmd=self.view_note_cmd)
-    
+
+    # def print_markdown(self, note_id, gen = 0):
+    #     row = self.query_row(note_id)
+    #     if row:
+    #         '## '  + row[
+    #         self.summary_formatted(row, gen) + \
+    #             '\n' + self.note_line() + \
+    #             '\n' + row[3] + \
+    #             '\n\n' + ('created ' + row[4] + ' & modified ' + row[5]).ljust(self.snippet_width + 17, ">").rjust(self.snippet_width + 24, "<") \
+    #             , cmd=self.view_note_cmd)
+    # 
+    #     gen_parts = self.gen_symbol(gen)
+    #     sts_str = (row[9] if row[9] else '').center(3, '|')
+    #     gen_str = gen_parts[0]
+    #     
+    #     idWidth = 5
+    #     sym_len = 0
+    #     multiline = '\n' in row[3] 
+    #     note_summary = gen_str + row[3].split('\n')[0]
+    #     nslen0 = len(note_summary)
+    #     tooLong = nslen0 > self.snippet_width 
+    #     chr_key = ['|', '~', 'v', '&']
+    #     if tooLong and multiline:
+    #         end_chr = 3
+    #     elif tooLong: # and not multiline
+    #         end_chr = 1 
+    #     elif multiline: # and not too long
+    #         end_chr = 2 
+    #     else:
+    #         end_chr = 0
+    #     note_summary = note_summary[:self.snippet_width].ljust(self.snippet_width) + chr_key[end_chr]
+    #     due_str = (row[2] if row[2] else '').center(10)
+    #     id_str = row[7][:idWidth].rjust(idWidth) if row[7] else str(row[0]).rjust(idWidth)
+    #     note_str = note_summary
+    #     plain_summary = '| ' + due_str + ' ' + sts_str + '' + id_str + ' ' + note_str + ' '
+
+    def identifier_to_id(self, note_id):
+        id_list = [int(x) for x in note_id if str(x).isdigit()]
+        alias_list = [x for x in note_id if not str(x).isdigit()]
+        if id_list:
+            sql_id_check = "SELECT notes_id FROM Notes WHERE notes_id IN ({id})".format(id=','.join(['?']*len(id_list)))
+            self.cursor.execute(sql_id_check, id_list) 
+            self.conn.commit()
+            id_list = list(sum(self.cursor.fetchall(), ()))
+        if alias_list:
+            sql_alias_check = "SELECT notes_id FROM Notes WHERE alias IN ({alias})".format(alias=','.join(['?']*len(alias_list)))
+            self.cursor.execute(sql_alias_check, alias_list) 
+            self.conn.commit()
+            a_ids = list(sum(self.cursor.fetchall(), ()))
+            id_list = id_list + a_ids
+        id_list.sort()
+        return(id_list)
+        
     def remove_note(self, note_id):
         # may need to be expanded to check other tables?
         print('Deleting note_id = ' + str(note_id))
@@ -329,14 +390,29 @@ class Jot:
                     self.conn.commit()
                     print(str(parent) + ' adopted ' + str(orphan))
     
-    def input_note(self, description, status_id, due, note_id, parent_id):
+    def input_note(self, description, status_id, due, priority, alias, note_id, parent_id):
+        if len(note_id) > 1:
+            print("You cannot assign an alias to multiple ids as once")
+            alias = None
+        sql_alias_check = 'SELECT EXISTS(SELECT 1 FROM Notes WHERE alias = ?);'
+        self.cursor.execute(sql_alias_check, (alias,))
+        self.conn.commit()
+        if str(sum(self.cursor.fetchall(), ())[0]) == "1":
+            print("Alias NOT ACCEPTED: '" + alias + "' is already in use")
+            alias = None
+        elif alias is None:
+            print("No Alias Provided")
+        else:
+            print("Alias '" + alias + "' is accepted")
+
         longEntryFormat = description == "<long-entry-note>"
         if due == "0001-01-01":
             due = None
-        if note_id is None:
-            self.add_note(description, status_id, due, parent_id, longEntryFormat)
+        if not note_id:
+            self.add_note(description, status_id, due, priority, alias, parent_id, longEntryFormat)
         else:
-            self.edit_note(description, status_id, due, note_id, parent_id, longEntryFormat)
+            for i in note_id:
+                self.edit_note(description, status_id, due, priority, alias, int(i), parent_id, longEntryFormat)
     
     def long_entry_note(self, existingNote):
         f = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
@@ -368,16 +444,18 @@ class Jot:
                 print('All parents removed from note')
     
     
-    def add_note(self, description, status_id, due, parent_id, longEntryFormat):
+    def add_note(self, description, status_id, due, priority, alias, parent_id, longEntryFormat):
+        if not status_id:
+            status_id = 1
         if longEntryFormat:
             description = self.long_entry_note('')
-        sql = 'INSERT INTO Notes (description, status_id, due) VALUES (?, ?, ?)'
-        self.cursor.execute(sql, (description, status_id, due))
+        sql = 'INSERT INTO Notes (description, status_id, due, priority, alias) VALUES (?, ?, ?, ?, ?)'
+        self.cursor.execute(sql, (description, status_id, due, priority, alias))
         self.conn.commit()
         print('Added note number: ' + str(self.cursor.lastrowid))
         self.nest_parent_child(parent_id, self.cursor.lastrowid)
     
-    def edit_note(self, description, status_id, due, note_id, parent_id, longEntryFormat):
+    def edit_note(self, description, status_id, due, priority, alias, note_id, parent_id, longEntryFormat):
         sql_old = 'SELECT * FROM Notes where notes_id = ?'
         self.cursor.execute(sql_old, (str(note_id),))
         row = self.cursor.fetchone()
@@ -385,13 +463,15 @@ class Jot:
             description = self.long_entry_note(str(row[3]))
         new_row = (
                 row[0],
-                status_id if status_id is not None else row[1], \
-                due if due is not None else row[2], \
-                description if description is not None else row[3], \
+                status_id if status_id is not None else row[1],
+                due if due is not None else row[2],
+                description if description is not None else row[3],
                 row[4],
-                datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
+                datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"),
+                priority if priority is not None else row[6],
+                alias if alias is not None else row[7]
                 )
-        sql = 'INSERT or REPLACE into Notes VALUES (?, ?, ?, ?, ?, ?)'
+        sql = 'INSERT or REPLACE into Notes VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         self.cursor.execute(sql, new_row)
         self.conn.commit()
         print('Edited note number: ' + str(self.cursor.lastrowid))
@@ -406,18 +486,20 @@ class Jot:
     
     def parse_inputs(self):
         parser = argparse.ArgumentParser()
+        parser.add_argument("identifier", help="ID or IDs filter", nargs='*')
         parser.add_argument("-v", "--verbose", action = "store_true", help="increase output verbosity")
         parser.add_argument("-r", "--review", action ='store_true', help="View completed and cancelled items")
         parser.add_argument("-n", "--note", help="note, add/edit, in quotes if more than a word", nargs='?', const='<long-entry-note>', default=None)
-        parser.add_argument("-e", "--edit", type=int, help="Edit existing note, argument: ID")
-        parser.add_argument("-u", "--uncheck", type=int, help="Uncheck existing note, argument: ID")
-        parser.add_argument("-c", "--check", type=int, help="Check existing note, argument: ID")
-        parser.add_argument("-l", "--less", type=int, help="Display whole note to `less` [ID]")
+        parser.add_argument("-u", "--uncheck", action = "store_true", help="Uncheck notes: set status = 2")
+        parser.add_argument("-c", "--check", action = "store_true", help="Check notes: set status = 3")
+        parser.add_argument("-l", "--less", action = 'store_true', help="Display note(s) using `less`")
         parser.add_argument("-o", "--order", type=str, choices=['nested', 'flat'], help="order to print note summary, if missing defaults to default setting", default = 'nested')
-        parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4, 5], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled, 5=partial", default=1)
+        parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4, 5], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled, 5=partial", default=None)
         parser.add_argument("-f", "--find", help="Find string within notes")
         parser.add_argument("-d", "--date", help="Key Date - format YYYY-MM-DD", type=self.valid_date, nargs='?', const='0001-01-01', default=None)
-        parser.add_argument("-rm", type=int, help="remove ID or list of IDs")
+        parser.add_argument("-i", "--priority", nargs='?', const=1, default=None, type=int, help="Prioritize item (priority = 1), or 0 to unprioritize")
+        parser.add_argument("-a", "--alias", help="Up to 5 character alias to replace index, accepted if unique", default=None)
+        parser.add_argument("-rm", action = "store_true", help="remove item(s)")
         parser.add_argument("-p", "--parent", nargs='?', const=0, default=None, type=int, help="Assign parent by note id, 0 or blank to remove all, -id to remove specific id")
         parser.add_argument("-dir", help="set db directory to supplied argument (PATH) or current directory if none", nargs='?', const='pwd', default=None)
         parser.add_argument("-dbname", help="set db name to supplied argument (filename excluding `.sqlite` extension) or jot (default) if none", nargs='?', const='jot', default=None)
@@ -448,17 +530,17 @@ class Jot:
                 subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'README.md')])
             if args.sqlite:
                 subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'create_db.sql')])
-        elif args.note or args.edit:
-            self.input_note(description=args.note, status_id=args.status, due=args.date, note_id=args.edit, parent_id=args.parent)
+        elif args.note or (args.identifier and (args.status or args.date or args.priority or args.alias or args.parent)):
+            self.input_note(description=args.note, status_id=args.status, due=args.date, priority=args.priority, alias=args.alias[:5] if args.alias else None, note_id=self.identifier_to_id(args.identifier), parent_id=args.parent)
         elif args.check:
-            self.input_note(description=None, status_id=3, due=None, note_id=args.check, parent_id=None)
+            self.input_note(description=None, status_id=3, due=None, priority=None, alias=None, note_id=self.identifier_to_id(args.identifier), parent_id=None)
         elif args.uncheck:
-            self.input_note(description=None, status_id=2, due=None, note_id=args.uncheck, parent_id=None)
+            self.input_note(description=None, status_id=2, due=None, priority=None, alias=None, note_id=self.identifier_to_id(args.identifier), parent_id=None)
         elif args.rm:
-            self.remove_note(args.rm)
+            [self.remove_note(i) for i in self.identifier_to_id(args.identifier)]
         # Output    
         if args.less:
-            self.print_note(args.less)
+            [self.print_note(i) for i in self.identifier_to_id(args.identifier)]
         elif args.verbose:
             self.print_notes(mode = args.order, status_show = (1,2,3,4,5), find = args.find)
         elif args.review:
