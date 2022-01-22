@@ -27,6 +27,9 @@ class Jot:
         
         ## Preferences
         self.snippet_width = 48
+        self.palette = [248, 217,  46,  34, 136,  36, 147,  15, 180] # see ansi 256 color codes: https://www.ditig.com/256-colors-cheat-sheet
+             #      [border, -->, [ ], [x], [0], [/], ind, defa, full note]
+
 
         ### Defaults
         #### windows config
@@ -132,10 +135,22 @@ class Jot:
         elif gen == -1:
             return ['? ']
     
-    def print_formatted(self, row, gen = 0, find = None):
+    def print_formatted(self, row, gen = 0, find = None, full = False):
         result = self.summary_formatted(row, gen = gen)
         if result:
             print(result)
+            if full:
+                note_summary_1 = row[3].split('\n')[0][self.snippet_width:]
+                note_summary_2 = row[3].split('\n')[1:]
+                note_summary_1 = note_summary_1 if isinstance(note_summary_1, list) else [note_summary_1]
+                note_summary_2 = note_summary_2 if isinstance(note_summary_2, list) else [note_summary_2]
+                note_summary = note_summary_1 + note_summary_2
+                if self.colorize:
+                    [print(self.style_parser(self.palette[0], 0) + '| ' + self.style_parser(self.palette[8], 0) + i) for i in note_summary if i]
+                else:
+                    [print('| ' + i) for i in note_summary if i]
+                print(self.note_line())
+
             if find:
                 wid = self.snippet_width - len(find)
                 widh1 = math.ceil(wid/2)
@@ -186,8 +201,7 @@ class Jot:
     
     def colorize_summary(self, my_str, gen = 0, status_id = 0, trim_key = 0):
         if self.colorize:
-            palette = [248, 217,  46,  34, 136,  36, 147,  15] # see ansi 256 color codes: https://www.ditig.com/256-colors-cheat-sheet
-            #      [border, -->, [ ], [x], [0], [/], ind, default]
+            palette = self.palette
             note_col = palette[0:6]
             sty = {}
             sty[0] = self.style_parser(palette[7], 0)
@@ -265,9 +279,10 @@ class Jot:
         ids, gens = self.nest_notes(my_ids)
         [self.print_formatted(self.query_row(i), g, find) for i, g in zip(ids, gens)]
 
-    def print_flat(self, my_ids, find):
-        [self.print_formatted(self.query_row(i), 0, find) for i in my_ids]
-    
+    def print_flat(self, my_ids, find, full=False):
+        my_ids = my_ids if isinstance(my_ids, list) else [my_ids]
+        [self.print_formatted(self.query_row(i), 0, find, full) for i in my_ids]
+
     def print_notes(self, mode = 'nested', status_show = (1,2,3,4,5), find = None):
         sql = "SELECT notes_id FROM Notes \
         WHERE status_id IN ({seq})".format(seq=','.join(['?']*len(status_show)))
@@ -288,6 +303,10 @@ class Jot:
             self.print_nested(my_ids, find)
         print(self.note_line())
     
+    def display_note(self, note_id):
+        print(self.note_line() + '\n' + self.note_header() + '\n' + self.note_line())
+        self.print_flat(note_id, find = None, full = True)
+        
     def query_row(self, note_id):
         sql = ''' SELECT * FROM Notes LEFT JOIN Status ON Notes.status_id = Status.status_id WHERE notes_id = ? '''
         self.cursor.execute(sql, (note_id,))
@@ -545,6 +564,8 @@ class Jot:
             self.print_notes(mode = args.order, status_show = (1,2,3,4,5), find = args.find)
         elif args.review:
             self.print_notes(mode = args.order, status_show = (3,4), find = args.find)
+        elif args.identifier:
+            self.display_note(self.identifier_to_id(args.identifier))
         else: # if no options, show active notes
             self.print_notes(mode = args.order, status_show = (1,2,5), find = args.find)
     
