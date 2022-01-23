@@ -135,20 +135,32 @@ class Jot:
         elif gen == -1:
             return ['? ']
     
+    def smart_wrap(self, text, width):
+        text_list = text.split('\n')
+        if not isinstance(text_list, list):
+            text_list = [text_list]
+        wrap = []
+        for line in text_list:
+            indent = len(line) - len(line.lstrip())
+            n = width - indent
+            line = line[indent:]
+            wrap.append('\n'.join([(''.ljust(indent if i == 0 else indent + 2) + line[i:i+n]) for i in range(0, len(line), n)]))
+        return '\n'.join(wrap)
+
     def print_formatted(self, row, gen = 0, find = None, full = False):
         result = self.summary_formatted(row, gen = gen)
         if result:
             print(result)
             if full:
-                note_summary_1 = row[3].split('\n')[0][self.snippet_width:]
-                note_summary_2 = row[3].split('\n')[1:]
-                note_summary_1 = note_summary_1 if isinstance(note_summary_1, list) else [note_summary_1]
-                note_summary_2 = note_summary_2 if isinstance(note_summary_2, list) else [note_summary_2]
-                note_summary = note_summary_1 + note_summary_2
-                if self.colorize:
-                    [print(self.style_parser(self.palette[0], 0) + '| ' + self.style_parser(self.palette[8], 0) + i) for i in note_summary if i]
-                else:
-                    [print('| ' + i) for i in note_summary if i]
+                if len(row[3]) > self.snippet_width:
+                    if self.colorize:
+                        [print(self.style_parser(self.palette[0], 0) + '| ' + \
+                            self.style_parser(self.palette[8], 0) + i.ljust(self.snippet_width + 20) + \
+                            self.style_parser(self.palette[0], 0) + '|') 
+                            for i in self.smart_wrap(row[3], width = self.snippet_width + 20).split('\n')]
+                    else:
+                        [print('| ' + i.ljust(self.snippet_width + 20) + '|') 
+                            for i in self.smart_wrap(row[3], width = self.snippet_width + 20).split('\n')]
                 print(self.note_line())
 
             if find:
@@ -250,7 +262,7 @@ class Jot:
         return self.colorize_summary('+------------+-+-----+' + ''.ljust(self.snippet_width, '-') + '+')
 
     def note_header(self):
-        return self.colorize_summary('|     Date   |?| Ind   Note ' + self.DB.rjust(self.snippet_width-7) + ' |')
+        return self.colorize_summary('|     Date   |?|  ID   Note ' + self.DB.rjust(self.snippet_width-7) + ' |')
     
     def nest_notes(self, my_ids):
         # calculate nesting of items
@@ -275,15 +287,15 @@ class Jot:
         gens.extend([0] * len(free))
         return ids, gens
 
-    def print_nested(self, my_ids, find):
+    def print_nested(self, my_ids, find, full=False):
         ids, gens = self.nest_notes(my_ids)
-        [self.print_formatted(self.query_row(i), g, find) for i, g in zip(ids, gens)]
+        [self.print_formatted(self.query_row(i), g, find, full) for i, g in zip(ids, gens)]
 
     def print_flat(self, my_ids, find, full=False):
         my_ids = my_ids if isinstance(my_ids, list) else [my_ids]
         [self.print_formatted(self.query_row(i), 0, find, full) for i in my_ids]
 
-    def print_notes(self, mode = 'nested', status_show = (1,2,3,4,5), find = None):
+    def print_notes(self, mode = 'nested', status_show = (1,2,3,4,5), find = None, full = False):
         sql = "SELECT notes_id FROM Notes \
         WHERE status_id IN ({seq})".format(seq=','.join(['?']*len(status_show)))
         sql_vars = status_show
@@ -298,9 +310,9 @@ class Jot:
         my_ids = list(sum(self.cursor.execute(sql, sql_vars).fetchall(), ()))
         print(self.note_line() + '\n' + self.note_header() + '\n' + self.note_line())
         if mode == 'flat':
-            self.print_flat(my_ids, find)
+            self.print_flat(my_ids, find, full)
         elif mode == 'nested':
-            self.print_nested(my_ids, find)
+            self.print_nested(my_ids, find, full)
         print(self.note_line())
     
     def display_note(self, note_id):
@@ -505,12 +517,9 @@ class Jot:
     
     def parse_inputs(self):
         parser = argparse.ArgumentParser()
-        parser.add_argument("identifier", help="ID or IDs filter", nargs='*')
+        parser.add_argument("identifier", help="Identify note(s) by index or alias", nargs='*')
         parser.add_argument("-v", "--verbose", action = "store_true", help="increase output verbosity")
-        parser.add_argument("-r", "--review", action ='store_true', help="View completed and cancelled items")
         parser.add_argument("-n", "--note", help="note, add/edit, in quotes if more than a word", nargs='?', const='<long-entry-note>', default=None)
-        parser.add_argument("-u", "--uncheck", action = "store_true", help="Uncheck notes: set status = 2")
-        parser.add_argument("-c", "--check", action = "store_true", help="Check notes: set status = 3")
         parser.add_argument("-l", "--less", action = 'store_true', help="Display note(s) using `less`")
         parser.add_argument("-o", "--order", type=str, choices=['nested', 'flat'], help="order to print note summary, if missing defaults to default setting", default = 'nested')
         parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4, 5], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled, 5=partial", default=None)
@@ -551,19 +560,13 @@ class Jot:
                 subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'create_db.sql')])
         elif args.note or (args.identifier and (args.status or args.date or args.priority or args.alias or args.parent)):
             self.input_note(description=args.note, status_id=args.status, due=args.date, priority=args.priority, alias=args.alias[:5] if args.alias else None, note_id=self.identifier_to_id(args.identifier), parent_id=args.parent)
-        elif args.check:
-            self.input_note(description=None, status_id=3, due=None, priority=None, alias=None, note_id=self.identifier_to_id(args.identifier), parent_id=None)
-        elif args.uncheck:
-            self.input_note(description=None, status_id=2, due=None, priority=None, alias=None, note_id=self.identifier_to_id(args.identifier), parent_id=None)
         elif args.rm:
             [self.remove_note(i) for i in self.identifier_to_id(args.identifier)]
         # Output    
         if args.less:
             [self.print_note(i) for i in self.identifier_to_id(args.identifier)]
         elif args.verbose:
-            self.print_notes(mode = args.order, status_show = (1,2,3,4,5), find = args.find)
-        elif args.review:
-            self.print_notes(mode = args.order, status_show = (3,4), find = args.find)
+            self.print_notes(mode = args.order, status_show = (1,2,3,4,5), find = args.find, full = True)
         elif args.identifier:
             self.display_note(self.identifier_to_id(args.identifier))
         else: # if no options, show active notes
