@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 """
-JOT is a note taking and task management tool 
+JOT is a note taking and task management tool
 """
 
 import sys
+import platform
 import sqlite3
 import tempfile
 import os
@@ -24,7 +25,7 @@ class Jot:
 
     def defaults(self):
         # Settings ----
-        
+
         ## Preferences
         self.snippet_width = 48
         self.palette = [248, 217,  46,  34, 136,  36, 147,  15, 180] # see ansi 256 color codes: https://www.ditig.com/256-colors-cheat-sheet
@@ -33,16 +34,20 @@ class Jot:
 
         ### Defaults
         #### windows config
-        if os.name == 'nt':
-            self.EDITOR = 'notepad'
-            self.colorize = False 
+        if platform.system() == "Windows":
+            self.EDITOR = "notepad"
+            self.colorize = False
             self.view_note_cmd = "more"
         #### linux config
-        else: 
-            self.EDITOR = 'nvim'
-            self.colorize = True 
+        elif platform.system() == "Darwin":
+            self.EDITOR = "vim"
+            self.colorize = True
             self.view_note_cmd = "less -R"
-            
+        else:
+            self.EDITOR = "nvim"
+            self.colorize = True
+            self.view_note_cmd = "less -R"
+
         ## Directories
         self.JOT_DIR = os.path.dirname(sys.argv[0])
         ### Set DB dir to contents of DB_DIR if existing, otherwise, same as JOT_DIR
