@@ -14,6 +14,7 @@ import sqlite3
 import pydoc
 import math
 
+from pathlib import Path
 from datetime import datetime
 
 
@@ -50,33 +51,34 @@ class Jot:
             self.view_note_cmd = "less -R"
 
         ## Directories
-        self.JOT_DIR = os.path.dirname(sys.argv[0])
+        ## RSD TODO: Update os.path to pathlib
+        ## RSD TODO: Think about where sqlite database goes when installed
+        self.JOT_DIR = Path(__file__).parent.parent / "dat"
         ### Set DB dir to contents of DB_DIR if existing, otherwise, same as JOT_DIR
-        DB_DIR = os.path.join(self.JOT_DIR, 'DB_DIR')
-        if os.path.exists(DB_DIR):
-            with open(DB_DIR, 'r') as f:
-                self.DB_DIR = f.read().strip()
-        else:
+        try:
+            with open(self.JOT_DIR / "DB_DIR") as f:
+                self.DB_DIR = Path(f.read().strip())
+        except FileNotFoundError:
             self.DB_DIR = self.JOT_DIR
+
         ### Set DB_NAME to contents of DB_NAME if existing, otherwise, jot.sqlite
-        DB_NAME = os.path.join(self.DB_DIR, 'DB_NAME')
-        if os.path.exists(DB_NAME):
-            with open(DB_NAME, 'r') as f:
+        try:
+            with open(self.DB_DIR / "DB_NAME") as f:
                 self.DB_NAME = f.read().strip()
-        else:
+        except FileNotFoundError:
             self.DB_NAME = 'jot.sqlite'
-        self.DB = os.path.join(self.DB_DIR, self.DB_NAME)
+        self.DB = self.DB_DIR / self.DB_NAME
 
     def style_parser(self, color = 15, style = 0):
         return '\x1b[' + str(style) + ';38;5;' + str(color) + 'm'
 
     def connect(self):
-        undefined_db = not os.path.exists(self.DB)
+        undefined_db = not self.DB.exists()
         if undefined_db:
-            print('creating new database: ' + self.DB)
+            print(f"creating new database: {self.DB}")
             self.conn = sqlite3.connect(self.DB)
             self.cursor = self.conn.cursor()
-            sql_file = open(os.path.join(self.JOT_DIR, "create_db.sql"))
+            sql_file = open(self.JOT_DIR / "jot/create_db.sql")
             sql_as_string = sql_file.read()
             self.cursor.executescript(sql_as_string)
             self.conn.commit()
@@ -268,7 +270,7 @@ class Jot:
         return self.colorize_summary('+------------+-+-----+' + ''.ljust(self.snippet_width, '-') + '+')
 
     def note_header(self):
-        return self.colorize_summary('|     Date   |?|  ID   Note ' + self.DB.rjust(self.snippet_width-7) + ' |')
+        return self.colorize_summary('|     Date   |?|  ID   Note ' + str(self.DB).rjust(self.snippet_width-7) + ' |')
 
     def nest_notes(self, my_ids):
         # calculate nesting of items
@@ -559,11 +561,11 @@ class Jot:
         # Input
         if args.code or args.readme or args.sqlite:
             if args.code:
-                subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'jot.py')])
+                subprocess.call([self.EDITOR, self.JOT_DIR / "jot/jot.py"])
             if args.readme:
-                subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'README.md')])
+                subprocess.call([self.EDITOR, self.JOT_DIR / 'README.md'])
             if args.sqlite:
-                subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'create_db.sql')])
+                subprocess.call([self.EDITOR, self.JOT_DIR / 'jot/create_db.sql'])
         elif args.note or (args.identifier and (args.status or args.date or args.priority or args.alias or args.parent)):
             self.input_note(description=args.note, status_id=args.status, due=args.date, priority=args.priority, alias=args.alias[:5] if args.alias else None, note_id=self.identifier_to_id(args.identifier), parent_id=args.parent)
         elif args.rm:

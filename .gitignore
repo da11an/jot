@@ -1,5 +1,4 @@
-jot
-*.sqlite
+dat/*.sqlite
 DB_DIR
 DB_NAME
 
