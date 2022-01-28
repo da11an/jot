@@ -1,0 +1,19 @@
+name,value,help
+db_name,jot.sqlite,Use this value to create or switch note databases
+db_dir,,Use this value to set the path to note database (blank for jot folder)
+snippet_width,50,set number of characters of note column width in summary
+color_line,248,see https://www.ditig.com/256-colors-cheat-sheet
+color_note,217,
+color_todo,46,
+color_done,34,
+color_drop,136,
+color_part,36,
+color_id,147,
+color_default,15,
+color_text,180,
+unix_editor,vim,
+unix_colorize,True,
+unix_view_cmd,less -R,
+win_editor,notepad,
+win_colorize,False,
+win_view_cmd,more,

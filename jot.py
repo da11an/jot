@@ -13,53 +13,66 @@ from datetime import datetime
 import subprocess
 import pydoc
 import math
+import csv
+import shutil
 
 
 class Jot:
     def __init__(self, **kwargs):
-        self.defaults()
+        self.read_config()
         self.connect()
         self.parse_inputs()
         self.main()
-
-    def defaults(self):
-        # Settings ----
-        
-        ## Preferences
-        self.snippet_width = 48
-        self.palette = [248, 217,  46,  34, 136,  36, 147,  15, 180] # see ansi 256 color codes: https://www.ditig.com/256-colors-cheat-sheet
-             #      [border, -->, [ ], [x], [0], [/], ind, defa, full note]
-
-
-        ### Defaults
-        #### windows config
-        if os.name == 'nt':
-            self.EDITOR = 'notepad'
-            self.colorize = False 
-            self.view_note_cmd = "more"
-        #### linux config
-        else: 
-            self.EDITOR = 'nvim'
-            self.colorize = True 
-            self.view_note_cmd = "less -R"
-            
-        ## Directories
+    
+    def read_config(self):
         self.JOT_DIR = os.path.dirname(sys.argv[0])
-        ### Set DB dir to contents of DB_DIR if existing, otherwise, same as JOT_DIR
-        DB_DIR = os.path.join(self.JOT_DIR, 'DB_DIR')
-        if os.path.exists(DB_DIR):
-            with open(DB_DIR, 'r') as f:
-                self.DB_DIR = f.read().strip()
-        else:
-            self.DB_DIR = self.JOT_DIR
-        ### Set DB_NAME to contents of DB_NAME if existing, otherwise, jot.sqlite
-        DB_NAME = os.path.join(self.DB_DIR, 'DB_NAME')
-        if os.path.exists(DB_NAME):
-            with open(DB_NAME, 'r') as f:
-                self.DB_NAME = f.read().strip()
-        else:
-            self.DB_NAME = 'jot.sqlite'
+
+        p = os.path.join(self.JOT_DIR, 'config.csv')
+        init_config = False
+        if not os.path.exists(p):
+            p = os.path.join(self.JOT_DIR, 'default_config.csv')
+            init_config = True
+        d = {}
+        with open(p, newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                d[row['name']] = row['value']        
+
+        self.config = d
+        if init_config:
+            self.config['db_dir'] = self.JOT_DIR
+            self.write_config(self.config)
+        
+        # see ansi 256 color codes: https://www.ditig.com/256-colors-cheat-sheet
+        self.palette = [d['color_line'], d['color_note'], d['color_todo'],
+                d['color_done'], d['color_drop'], d['color_part'], d['color_id'],
+                d['color_default'], d['color_text']]
+
+        self.snippet_width = int(d['snippet_width']) # notes column print width
+        self.DB_NAME = d['db_name']
+        self.DB_DIR = d['db_dir']
         self.DB = os.path.join(self.DB_DIR, self.DB_NAME)
+            
+        if os.name == 'nt':
+            self.EDITOR = d['win_editor']
+            self.colorize = d['win_colorize'] == "True"
+            self.view_note_cmd = d['win_view_cmd']
+        else: # Linux config 
+            self.EDITOR = d['unix_editor']
+            self.colorize = d['unix_colorize'] == "True"
+            self.view_note_cmd = d['unix_view_cmd']
+        return(d)
+
+    def write_config(self, config):
+        conf_list = []
+        for key, val in config.items():
+            conf_list.append({'name': key, 'value': val})
+        fields = ['name', 'value']
+
+        with open(os.path.join(self.JOT_DIR, 'config.csv'), 'w') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames = fields)
+            writer.writeheader()
+            writer.writerows(conf_list)
 
     def style_parser(self, color = 15, style = 0):
         return '\x1b[' + str(style) + ';38;5;' + str(color) + 'm'
@@ -93,19 +106,20 @@ class Jot:
                 sys.exit(_("Connection to sqlite db failed!"))
     
     def set_db_dir(self, path):
-        if path == 'pwd':
-            path = os.getcwd()
-        with open(os.path.join(self.JOT_DIR, 'DB_DIR'), 'w') as f:
-            f.write(path)
-        self.DB_DIR = path
-        self.DB = os.path.join(self.DB_DIR, self.DB_NAME)
+        if os.path.exists(path):
+            self.config['db_dir'] = path
+        elif path == 'pwd':
+            self.config['db_dir'] = os.getcwd()
+        else:
+            print('database directory not found')
+        self.write_config(self.config)
+        self.read_config()
     
     def set_db_name(self, name):
         name = name + '.sqlite'
-        with open(os.path.join(self.JOT_DIR, 'DB_NAME'), 'w') as f:
-            f.write(name)
-        self.DB_NAME = name
-        self.DB = os.path.join(self.DB_DIR, self.DB_NAME)
+        self.config['db_name'] = name
+        self.write_config(self.config)
+        self.read_config()
 
     def flatten2set(self, object):
         gather = []
@@ -517,26 +531,45 @@ class Jot:
     
     def parse_inputs(self):
         parser = argparse.ArgumentParser()
-        parser.add_argument("identifier", help="Identify note(s) by index or alias", nargs='*')
-        parser.add_argument("-v", "--verbose", action = "store_true", help="increase output verbosity")
-        parser.add_argument("-n", "--note", help="note, add/edit, in quotes if more than a word", nargs='?', const='<long-entry-note>', default=None)
-        parser.add_argument("-l", "--less", action = 'store_true', help="Display note(s) using `less`")
-        parser.add_argument("-o", "--order", type=str, choices=['nested', 'flat'], help="order to print note summary, if missing defaults to default setting", default = 'nested')
-        parser.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4, 5], help="set status to 1=plain note, 2=unchecked, 3=checked, 4=cancelled, 5=partial", default=None)
-        parser.add_argument("-f", "--find", help="Find string within notes")
-        parser.add_argument("-d", "--date", help="Key Date - format YYYY-MM-DD", type=self.valid_date, nargs='?', const='0001-01-01', default=None)
-        parser.add_argument("-i", "--priority", nargs='?', const=1, default=None, type=int, help="Prioritize item (priority = 1), or 0 to unprioritize")
-        parser.add_argument("-a", "--alias", help="Up to 5 character alias to replace index, accepted if unique", default=None)
-        parser.add_argument("-rm", action = "store_true", help="remove item(s)")
-        parser.add_argument("-p", "--parent", nargs='?', const=0, default=None, type=int, help="Assign parent by note id, 0 or blank to remove all, -id to remove specific id")
-        parser.add_argument("-dir", help="set db directory to supplied argument (PATH) or current directory if none", nargs='?', const='pwd', default=None)
-        parser.add_argument("-dbname", help="set db name to supplied argument (filename excluding `.sqlite` extension) or jot (default) if none", nargs='?', const='jot', default=None)
-        parser.add_argument("-code", action = "store_true", help="Open python code for development")
-        parser.add_argument("-readme", action = "store_true", help="Open README.md for editing")
-        parser.add_argument("-sqlite", action = "store_true", help="Open create.sqlite for editing")
+        group1 = parser.add_argument_group(title="positional arguments")
+        group = parser.add_argument_group(title="item inputs", description="set attributes")
+        group23 = parser.add_argument_group(title="manage items")
+        group25 = parser.add_argument_group(title="display options")
+        group2 = parser.add_argument_group(title="configure JOT")
+        group3 = parser.add_argument_group(title="developer tools")
+        group1.add_argument("identifier", help="Specify note identifier(s) by index or alias (optional)", nargs='*')
+        group.add_argument("-n", "--note", help="Contents of note or blank to initiate editor", nargs='?', const='<long-entry-note>', default=None)
+        group.add_argument("-s", "--status", type=int, choices=[1, 2, 3, 4, 5], help="Status: 1 (notes), 2 (to-do), 3 (complete), 4 (cancelled), 5 (partial)", default=None)
+        group25.add_argument("-f", "--find", help="Find string within notes")
+        group.add_argument("-d", "--date", help="Key Date - format YYYY-MM-DD", type=self.valid_date, nargs='?', const='0001-01-01', default=None)
+        group.add_argument("-i", "--priority", nargs='?', const=1, default=None, type=int, help="Prioritize item (priority = 1), or 0 to unprioritize")
+        group.add_argument("-a", "--alias", help="Up to 5 character unique alias to replace index", default=None)
+        group23.add_argument("-rm", action = "store_true", help="remove item(s)")
+        group.add_argument("-p", "--parent", nargs='?', const=0, default=None, type=int, help="Assign parent, 0 or blank to remove all, -id to remove specific id")
+        group25.add_argument("-l", "--less", action = 'store_true', help="Display using `less`")
+        group25.add_argument("-o", "--order", type=str, choices=['nested', 'flat'], help="Note summary table style", default = 'nested')
+        group25.add_argument("-v", "--verbose", action = "store_true", help="Increase output verbosity")
+        group2.add_argument("-config", help="Configure JOT preferences", action = "store_true")
+        group2.add_argument("-dir", help="set db directory, current working directory if no argument", nargs='?', default=None, const='pwd')
+        group2.add_argument("-dbname", help="set db name to supplied argument (filename excluding `.sqlite` extension) or jot (default) if none", nargs='?', const='jot', default=None)
+        group3.add_argument("-code", action = "store_true", help="Open python code for development")
+        group3.add_argument("-readme", action = "store_true", help="Open README.md for editing")
+        group3.add_argument("-sqlite", action = "store_true", help="Open create.sqlite for editing")
         args = parser.parse_args()
         self.args = args if args else ''
     
+#    def input_logic(self):
+#        args = self.args
+#        if args.identifier:
+#            if len(args.identifier) == 1:
+#                if args.status or args.date or args.priority or args.alias or args.parent:
+#                    # input note changes
+#            else:
+#                if (args.status or args.date or args.priority or args.parent) and not args.alias:
+#                    # input note changes
+#                else:
+#                    print("Use -s -d -i or -p but not -a when editing multiple items")
+
     def main(self):
         args = self.args
         # Set Preferences
@@ -551,9 +584,11 @@ class Jot:
             self.set_db_name(args.dbname)
             self.connect()
         # Input
-        if args.code or args.readme or args.sqlite:
+        if args.code or args.readme or args.sqlite or args.config:
             if args.code:
                 subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'jot.py')])
+            if args.config:
+                subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'config.csv')])
             if args.readme:
                 subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'README.md')])
             if args.sqlite:
