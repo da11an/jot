@@ -40,26 +40,28 @@ class Jot:
             self.EDITOR = "notepad"
             self.colorize = False
             self.view_note_cmd = "more"
-        #### linux config
+        #### macos
         elif platform.system() == "Darwin":
             self.EDITOR = "vim"
             self.colorize = True
             self.view_note_cmd = "less -R"
+        #### linux config
         else:
-            self.EDITOR = "nvim"
+            self.EDITOR = "vim"
             self.colorize = True
             self.view_note_cmd = "less -R"
 
         ## Directories
-        ## RSD TODO: Update os.path to pathlib
         ## RSD TODO: Think about where sqlite database goes when installed
-        self.JOT_DIR = Path(__file__).parent.parent / "dat"
+        self.JOT_DIR = Path(__file__).parent.parent
         ### Set DB dir to contents of DB_DIR if existing, otherwise, same as JOT_DIR
         try:
             with open(self.JOT_DIR / "DB_DIR") as f:
                 self.DB_DIR = Path(f.read().strip())
         except FileNotFoundError:
             self.DB_DIR = self.JOT_DIR
+            self.DB_DIR = self.JOT_DIR / "dat"
+            self.DB_DIR.mkdir(exist_ok=True)
 
         ### Set DB_NAME to contents of DB_NAME if existing, otherwise, jot.sqlite
         try:
@@ -580,8 +582,12 @@ class Jot:
         else: # if no options, show active notes
             self.print_notes(mode = args.order, status_show = (1,2,5), find = args.find)
 
+
+def main():
+    Jot()
+
 if __name__ == "__main__":
-    jot = Jot()
+    main()
 
 # def convertToBinaryData(filename):
 #     # Convert digital data to binary format

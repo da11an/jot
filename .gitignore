@@ -1,4 +1,7 @@
 dat/*.sqlite
 DB_DIR
 DB_NAME
-
+.DS_Store
+build/
+dist/
+*.egg-info
