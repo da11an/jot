@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 
 """
-JOT is a note taking and task management tool 
+JOT is a note taking and task management tool
 """
 
-import sys
-import sqlite3
-import tempfile
 import os
-import argparse
-from datetime import datetime
+import sys
+import platform
 import subprocess
+import argparse
+import tempfile
+import sqlite3
 import pydoc
 import math
 import csv
 import shutil
+
+from pathlib import Path
+from datetime import datetime
 
 
 class Jot:
@@ -25,22 +28,26 @@ class Jot:
         self.main()
     
     def read_config(self):
-        self.JOT_DIR = os.path.dirname(sys.argv[0])
+        ## RSD TODO: Think about where sqlite database goes when installed
+        self.JOT_DIR = Path(__file__).parent.parent
+        
+        def_conf = self.JOT_DIR / 'jot' / 'default_config.csv'
+        conf = self.JOT_DIR / 'dat' / 'config.csv'
+        
+        if conf.exists():
+            p = conf
+        else:
+            p = def_conf
 
-        p = os.path.join(self.JOT_DIR, 'config.csv')
-        init_config = False
-        if not os.path.exists(p):
-            p = os.path.join(self.JOT_DIR, 'default_config.csv')
-            init_config = True
         d = {}
         with open(p, newline='') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 d[row['name']] = row['value']        
-
         self.config = d
-        if init_config:
-            self.config['db_dir'] = self.JOT_DIR
+
+        if p == def_conf:
+            self.config['db_dir'] = self.JOT_DIR / "dat"
             self.write_config(self.config)
         
         # see ansi 256 color codes: https://www.ditig.com/256-colors-cheat-sheet
@@ -50,14 +57,37 @@ class Jot:
 
         self.snippet_width = int(d['snippet_width']) # notes column print width
         self.DB_NAME = d['db_name']
-        self.DB_DIR = d['db_dir']
-        self.DB = os.path.join(self.DB_DIR, self.DB_NAME)
+        self.DB_DIR = Path(d['db_dir'])
+        self.DB = self.DB_DIR / self.DB_NAME
+        # ### Set DB dir to contents of DB_DIR if existing, otherwise, same as JOT_DIR
+        # try:
+        #     with open(self.JOT_DIR / "DB_DIR") as f:
+        #         self.DB_DIR = Path(f.read().strip())
+        # except FileNotFoundError:
+        #     self.DB_DIR = self.JOT_DIR
+        #     self.DB_DIR = self.JOT_DIR / "dat"
+        #     self.DB_DIR.mkdir(exist_ok=True)
+
+        ### Set DB_NAME to contents of DB_NAME if existing, otherwise, jot.sqlite
+        # try:
+        #     with open(self.DB_DIR / "DB_NAME") as f:
+        #         self.DB_NAME = f.read().strip()
+        # except FileNotFoundError:
+        #     self.DB_NAME = 'jot.sqlite'
+        # self.DB = self.DB_DIR / self.DB_NAME
             
-        if os.name == 'nt':
+        #### windows config
+        if platform.system() == 'Windows':
             self.EDITOR = d['win_editor']
             self.colorize = d['win_colorize'] == "True"
             self.view_note_cmd = d['win_view_cmd']
-        else: # Linux config 
+        #### macos
+        elif platform.system() == "Darwin":
+            self.EDITOR = d['mac_editor']
+            self.colorize = d['mac_editor'] == "True"
+            self.view_note_cmd = d['mac_view_cmd']
+        #### Linux config
+        else:
             self.EDITOR = d['unix_editor']
             self.colorize = d['unix_colorize'] == "True"
             self.view_note_cmd = d['unix_view_cmd']
@@ -69,7 +99,7 @@ class Jot:
             conf_list.append({'name': key, 'value': val})
         fields = ['name', 'value']
 
-        with open(os.path.join(self.JOT_DIR, 'config.csv'), 'w') as csvfile:
+        with open(self.JOT_DIR / 'dat' / 'config.csv', 'w') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames = fields)
             writer.writeheader()
             writer.writerows(conf_list)
@@ -78,12 +108,12 @@ class Jot:
         return '\x1b[' + str(style) + ';38;5;' + str(color) + 'm'
 
     def connect(self):
-        undefined_db = not os.path.exists(self.DB)
+        undefined_db = not self.DB.exists()
         if undefined_db:
-            print('creating new database: ' + self.DB)
+            print(f"creating new database: {self.DB}")
             self.conn = sqlite3.connect(self.DB)
             self.cursor = self.conn.cursor()
-            sql_file = open(os.path.join(self.JOT_DIR, "create_db.sql"))
+            sql_file = open(self.JOT_DIR / "jot/create_db.sql")
             sql_as_string = sql_file.read()
             self.cursor.executescript(sql_as_string)
             self.conn.commit()
@@ -104,7 +134,7 @@ class Jot:
             except:
                 print ('attempting to connect to ' + self.JOT_DIR)
                 sys.exit(_("Connection to sqlite db failed!"))
-    
+
     def set_db_dir(self, path):
         if os.path.exists(path):
             self.config['db_dir'] = path
@@ -114,7 +144,7 @@ class Jot:
             print('database directory not found')
         self.write_config(self.config)
         self.read_config()
-    
+
     def set_db_name(self, name):
         name = name + '.sqlite'
         self.config['db_name'] = name
@@ -125,20 +155,20 @@ class Jot:
         gather = []
         for item in object:
             if isinstance(item, (list, tuple, set)):
-                gather.extend(self.flatten2set(item))            
+                gather.extend(self.flatten2set(item))
             else:
                 gather.append(item)
         return set(gather)
-    
+
     def flatten2list(self, object):
         gather = []
         for item in object:
             if isinstance(item, (list, tuple, set)):
-                gather.extend(self.flatten2list(item))            
+                gather.extend(self.flatten2list(item))
             else:
                 gather.append(item)
         return list(gather)
-    
+
     def gen_symbol(self, gen):
         if gen == 0:
             return ['']
@@ -148,7 +178,7 @@ class Jot:
             return ['>'.rjust(gen, '-') + ' ']
         elif gen == -1:
             return ['? ']
-    
+
     def smart_wrap(self, text, width):
         text_list = text.split('\n')
         if not isinstance(text_list, list):
@@ -170,10 +200,10 @@ class Jot:
                     if self.colorize:
                         [print(self.style_parser(self.palette[0], 0) + '| ' + \
                             self.style_parser(self.palette[8], 0) + i.ljust(self.snippet_width + 20) + \
-                            self.style_parser(self.palette[0], 0) + '|') 
+                            self.style_parser(self.palette[0], 0) + '|')
                             for i in self.smart_wrap(row[3], width = self.snippet_width + 20).split('\n')]
                     else:
-                        [print('| ' + i.ljust(self.snippet_width + 20) + '|') 
+                        [print('| ' + i.ljust(self.snippet_width + 20) + '|')
                             for i in self.smart_wrap(row[3], width = self.snippet_width + 20).split('\n')]
                 print(self.note_line())
 
@@ -181,7 +211,7 @@ class Jot:
                 wid = self.snippet_width - len(find)
                 widh1 = math.ceil(wid/2)
                 widh2 = math.floor(wid/2)
-                snip = [i for i in row[3].lower().split('\n') if i.find(self.args.find.lower())>=0] 
+                snip = [i for i in row[3].lower().split('\n') if i.find(self.args.find.lower())>=0]
                 for line in snip:
                     context = ('~' + line + '~').split(find.lower())
                     if len(line) > wid:
@@ -189,7 +219,7 @@ class Jot:
                         context_wid = [len(i) for i in context][0:2]
                         if sum(context_wid) > wid:
                             if context_wid[0] > widh1 and context_wid[1] > widh2:
-                                line = context[0][-widh1:] + find.upper() + context[1][:widh2] 
+                                line = context[0][-widh1:] + find.upper() + context[1][:widh2]
                             elif context_wid[0] > widh1:
                                 line = context[0][-(wid-context_wid[1]):] + find.upper() + context[1]
                             else:
@@ -197,25 +227,25 @@ class Jot:
                     else:
                         line = context[0] + find.upper() + context[1]
                     print(self.colorize_summary('|                     ' + line.ljust(self.snippet_width) + '|'))
-    
+
     def summary_formatted(self, row, gen = 0):
         gen_parts = self.gen_symbol(gen)
         sts_str = (row[9] if row[9] else '').center(3, '|')
         gen_str = gen_parts[0]
-        
+
         idWidth = 5
         sym_len = 0
-        multiline = '\n' in row[3] 
+        multiline = '\n' in row[3]
         note_summary = gen_str + row[3].split('\n')[0]
         nslen0 = len(note_summary)
-        tooLong = nslen0 > self.snippet_width 
+        tooLong = nslen0 > self.snippet_width
         chr_key = ['|', '~', 'v', '&']
         if tooLong and multiline:
             end_chr = 3
         elif tooLong: # and not multiline
-            end_chr = 1 
+            end_chr = 1
         elif multiline: # and not too long
-            end_chr = 2 
+            end_chr = 2
         else:
             end_chr = 0
         note_summary = note_summary[:self.snippet_width].ljust(self.snippet_width) + chr_key[end_chr]
@@ -224,7 +254,7 @@ class Jot:
         note_str = note_summary
         plain_summary = '| ' + due_str + ' ' + sts_str + '' + id_str + ' ' + note_str + ' '
         return(self.colorize_summary(plain_summary, gen, row[8], end_chr))
-    
+
     def colorize_summary(self, my_str, gen = 0, status_id = 0, trim_key = 0):
         if self.colorize:
             palette = self.palette
@@ -235,7 +265,7 @@ class Jot:
             sty['note'] = self.style_parser(note_col[status_id], 0)
             sty['end'] = self.style_parser(palette[0], 0 if trim_key == 0 else 5)
             sty['date'] = sty['note']
-            sty['stat'] = sty['note'] 
+            sty['stat'] = sty['note']
             mydate = sty['date'] + my_str[1:13]
             mystat = sty['stat'] + my_str[13:16]
             myind = sty['ind'] + my_str[16:22]
@@ -247,7 +277,7 @@ class Jot:
             return(sty['end'] + my_str[0:1] + mydate + mystat + myind + mygen + mynote + myend)
         else:
             return(my_str)
-   
+
     def search_notes(self, term):
         sql = ''' SELECT notes_id FROM Notes WHERE description LIKE ? '''
         found_id = self.cursor.execute(sql, ('%' + term + '%',)).fetchall()
@@ -259,7 +289,7 @@ class Jot:
         children = list(sum(self.cursor.execute(sql, (parent,)).fetchall(), ()))
         nest = [parent, gen, [self.find_children(child, gen+1) for child in children]]
         return nest
-    
+
     def family_tree(self):
         sql_parents = ' SELECT parent FROM Nest '
         sql_children = ' SELECT child FROM Nest '
@@ -270,14 +300,14 @@ class Jot:
         first_parents = list(parents - parent_children)
         first_parents.sort()
         tree = list([self.find_children(parents, 1) for parents in first_parents])
-        return tree, parent_children 
-    
+        return tree, parent_children
+
     def note_line(self):
         return self.colorize_summary('+------------+-+-----+' + ''.ljust(self.snippet_width, '-') + '+')
 
     def note_header(self):
-        return self.colorize_summary('|     Date   |?|  ID   Note ' + self.DB.rjust(self.snippet_width-7) + ' |')
-    
+        return self.colorize_summary('|     Date   |?|  ID   Note ' + str(self.DB).rjust(self.snippet_width-7) + ' |')
+
     def nest_notes(self, my_ids):
         # calculate nesting of items
         tree, parent_children = self.family_tree()
@@ -320,7 +350,7 @@ class Jot:
             if found is not None:
                 sql = sql + " AND notes_id IN ({nid})".format(nid=','.join(['?']*len(found)))
                 sql_vars = sql_vars + found
-        
+
         my_ids = list(sum(self.cursor.execute(sql, sql_vars).fetchall(), ()))
         print(self.note_line() + '\n' + self.note_header() + '\n' + self.note_line())
         if mode == 'flat':
@@ -328,17 +358,17 @@ class Jot:
         elif mode == 'nested':
             self.print_nested(my_ids, find, full)
         print(self.note_line())
-    
+
     def display_note(self, note_id):
         print(self.note_line() + '\n' + self.note_header() + '\n' + self.note_line())
         self.print_flat(note_id, find = None, full = True)
-        
+
     def query_row(self, note_id):
         sql = ''' SELECT * FROM Notes LEFT JOIN Status ON Notes.status_id = Status.status_id WHERE notes_id = ? '''
         self.cursor.execute(sql, (note_id,))
         row = self.cursor.fetchone()
         return(row)
-    
+
     def print_note(self, note_id, gen = 0):
         row = self.query_row(note_id)
         if not row:
@@ -392,41 +422,41 @@ class Jot:
         alias_list = [x for x in note_id if not str(x).isdigit()]
         if id_list:
             sql_id_check = "SELECT notes_id FROM Notes WHERE notes_id IN ({id})".format(id=','.join(['?']*len(id_list)))
-            self.cursor.execute(sql_id_check, id_list) 
+            self.cursor.execute(sql_id_check, id_list)
             self.conn.commit()
             id_list = list(sum(self.cursor.fetchall(), ()))
         if alias_list:
             sql_alias_check = "SELECT notes_id FROM Notes WHERE alias IN ({alias})".format(alias=','.join(['?']*len(alias_list)))
-            self.cursor.execute(sql_alias_check, alias_list) 
+            self.cursor.execute(sql_alias_check, alias_list)
             self.conn.commit()
             a_ids = list(sum(self.cursor.fetchall(), ()))
             id_list = id_list + a_ids
         id_list.sort()
         return(id_list)
-        
+
     def remove_note(self, note_id):
         # may need to be expanded to check other tables?
         print('Deleting note_id = ' + str(note_id))
         sql_delete_query = "DELETE FROM Notes where notes_id = ?"
         self.cursor.execute(sql_delete_query, (str(note_id),))
         self.conn.commit()
-        
+
         sql_parents = "Select parent FROM Nest where child = ?"
         self.cursor.execute(sql_parents, (note_id,))
         self.conn.commit()
         parents = self.cursor.fetchall()
-        parents = set(sum(parents, ())) 
-        
+        parents = set(sum(parents, ()))
+
         sql_orphans = "Select child FROM Nest where parent = ?"
         self.cursor.execute(sql_orphans, (note_id,))
         self.conn.commit()
         orphans = self.cursor.fetchall()
-        orphans = set(sum(orphans, ())) 
-        
+        orphans = set(sum(orphans, ()))
+
         sql_delete_nest = "DELETE FROM Nest WHERE parent = ? OR child = ?"
         self.cursor.execute(sql_delete_nest, (note_id, note_id))
         self.conn.commit()
-        
+
         if orphans is not None and parents is not None:
             sql_adopt = 'INSERT INTO Nest (parent, child) VALUES (?, ?)'
             for parent in parents:
@@ -434,7 +464,7 @@ class Jot:
                     self.cursor.execute(sql_adopt, (parent, orphan))
                     self.conn.commit()
                     print(str(parent) + ' adopted ' + str(orphan))
-    
+
     def input_note(self, description, status_id, due, priority, alias, note_id, parent_id):
         if len(note_id) > 1 or str(alias).isdigit():
             print("You cannot assign an alias to multiple ids as once; alias cannot be a number")
@@ -458,7 +488,7 @@ class Jot:
         else:
             for i in note_id:
                 self.edit_note(description, status_id, due, priority, alias, int(i), parent_id, longEntryFormat)
-    
+
     def long_entry_note(self, existingNote):
         f = tempfile.NamedTemporaryFile(mode='w+t', delete=False)
         n = f.name
@@ -468,7 +498,7 @@ class Jot:
         with open(n) as f:
             note = f.read()
         return(note.rstrip())
-    
+
     def nest_parent_child(self, parent, child):
         if parent is not None and child is not None:
             print('parent: ' + str(parent))
@@ -487,8 +517,8 @@ class Jot:
                 self.cursor.execute(sql_unnest, (child,))
                 self.conn.commit()
                 print('All parents removed from note')
-    
-    
+
+
     def add_note(self, description, status_id, due, priority, alias, parent_id, longEntryFormat):
         if not status_id:
             status_id = 1
@@ -499,7 +529,7 @@ class Jot:
         self.conn.commit()
         print('Added note number: ' + str(self.cursor.lastrowid))
         self.nest_parent_child(parent_id, self.cursor.lastrowid)
-    
+
     def edit_note(self, description, status_id, due, priority, alias, note_id, parent_id, longEntryFormat):
         sql_old = 'SELECT * FROM Notes where notes_id = ?'
         self.cursor.execute(sql_old, (str(note_id),))
@@ -521,14 +551,14 @@ class Jot:
         self.conn.commit()
         print('Edited note number: ' + str(self.cursor.lastrowid))
         self.nest_parent_child(parent_id, note_id)
-    
+
     def valid_date(self, s):
         try:
             return datetime.strftime(datetime.strptime(s, "%Y-%m-%d"), "%Y-%m-%d")
         except ValueError:
             msg = "not a valid date: {0!r}".format(s)
             raise argparse.ArgumentTypeError(msg)
-    
+
     def parse_inputs(self):
         parser = argparse.ArgumentParser()
         group1 = parser.add_argument_group(title="positional arguments")
@@ -586,18 +616,18 @@ class Jot:
         # Input
         if args.code or args.readme or args.sqlite or args.config:
             if args.code:
-                subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'jot.py')])
+                subprocess.call([self.EDITOR, self.JOT_DIR / 'jot' / 'jot.py'])
             if args.config:
-                subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'config.csv')])
+                subprocess.call([self.EDITOR, self.JOT_DIR / 'dat' / 'config.csv'])
             if args.readme:
-                subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'README.md')])
+                subprocess.call([self.EDITOR, self.JOT_DIR / 'README.md'])
             if args.sqlite:
-                subprocess.call([self.EDITOR, os.path.join(self.JOT_DIR, 'create_db.sql')])
+                subprocess.call([self.EDITOR, self.JOT_DIR / 'jot' / 'create_db.sql'])
         elif args.note or (args.identifier and (args.status or args.date or args.priority or args.alias or args.parent)):
             self.input_note(description=args.note, status_id=args.status, due=args.date, priority=args.priority, alias=args.alias[:5] if args.alias else None, note_id=self.identifier_to_id(args.identifier), parent_id=args.parent)
         elif args.rm:
             [self.remove_note(i) for i in self.identifier_to_id(args.identifier)]
-        # Output    
+        # Output
         if args.less:
             [self.print_note(i) for i in self.identifier_to_id(args.identifier)]
         elif args.verbose:
@@ -606,9 +636,13 @@ class Jot:
             self.display_note(self.identifier_to_id(args.identifier))
         else: # if no options, show active notes
             self.print_notes(mode = args.order, status_show = (1,2,5), find = args.find)
-    
+
+
+def main():
+    Jot()
+
 if __name__ == "__main__":
-    jot = Jot()
+    main()
 
 # def convertToBinaryData(filename):
 #     # Convert digital data to binary format
