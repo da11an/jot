@@ -26,14 +26,14 @@ class Jot:
         self.connect()
         self.parse_inputs()
         self.main()
-    
+
     def read_config(self):
         ## RSD TODO: Think about where sqlite database goes when installed
         self.JOT_DIR = Path(__file__).parent.parent
-        
+
         def_conf = self.JOT_DIR / 'jot' / 'default_config.csv'
         conf = self.JOT_DIR / 'dat' / 'config.csv'
-        
+
         if conf.exists():
             p = conf
         else:
@@ -61,7 +61,7 @@ class Jot:
         self.DB_NAME = d['db_name']
         self.DB_DIR = Path(d['db_dir'])
         self.DB = self.DB_DIR / self.DB_NAME
-        
+
         # see ansi 256 color codes: https://www.ditig.com/256-colors-cheat-sheet
         self.palette = [d['color_line'], d['color_note'], d['color_todo'],
                 d['color_done'], d['color_drop'], d['color_part'], d['color_id'],
@@ -372,24 +372,24 @@ class Jot:
     #             '\n' + row[3] + \
     #             '\n\n' + ('created ' + row[4] + ' & modified ' + row[5]).ljust(self.snippet_width + 17, ">").rjust(self.snippet_width + 24, "<") \
     #             , cmd=self.view_note_cmd)
-    # 
+    #
     #     gen_parts = self.gen_symbol(gen)
     #     sts_str = (row[9] if row[9] else '').center(3, '|')
     #     gen_str = gen_parts[0]
-    #     
+    #
     #     idWidth = 5
     #     sym_len = 0
-    #     multiline = '\n' in row[3] 
+    #     multiline = '\n' in row[3]
     #     note_summary = gen_str + row[3].split('\n')[0]
     #     nslen0 = len(note_summary)
-    #     tooLong = nslen0 > self.snippet_width 
+    #     tooLong = nslen0 > self.snippet_width
     #     chr_key = ['|', '~', 'v', '&']
     #     if tooLong and multiline:
     #         end_chr = 3
     #     elif tooLong: # and not multiline
-    #         end_chr = 1 
+    #         end_chr = 1
     #     elif multiline: # and not too long
-    #         end_chr = 2 
+    #         end_chr = 2
     #     else:
     #         end_chr = 0
     #     note_summary = note_summary[:self.snippet_width].ljust(self.snippet_width) + chr_key[end_chr]
@@ -568,7 +568,7 @@ class Jot:
         group3.add_argument("-sqlite", action = "store_true", help="Open create.sqlite for editing")
         args = parser.parse_args()
         self.args = args if args else ''
-    
+
 #    def input_logic(self):
 #        args = self.args
 #        if args.identifier:
@@ -630,7 +630,7 @@ if __name__ == "__main__":
 #     with open(filename, 'rb') as file:
 #         blobData = file.read()
 #     return blobData
-# 
+#
 
 # def insertBLOB(empId, name, photo, resumeFile):
 #     try:
@@ -639,7 +639,7 @@ if __name__ == "__main__":
 #         print("Connected to SQLite")
 #         sqlite_insert_blob_query = """ INSERT INTO Files
 #                                   (id, name, photo, resume) VALUES (?, ?, ?, ?)"""
-# 
+#
 #         empPhoto = convertToBinaryData(photo)
 #         resume = convertToBinaryData(resumeFile)
 #         # Convert data into tuple format
@@ -648,13 +648,13 @@ if __name__ == "__main__":
 #         sqliteConnection.commit()
 #         print("Image and file inserted successfully as a BLOB into a table")
 #         cursor.close()
-# 
+#
 #     except sqlite3.Error as error:
 #         print("Failed to insert blob data into sqlite table", error)
 #     finally:
 #         if sqliteConnection:
 #             sqliteConnection.close()
 #             print("the sqlite connection is closed")
-# 
+#
 # insertBLOB(1, "Smith", "E:\pynative\Python\photos\smith.jpg", "E:\pynative\Python\photos\smith_resume.txt")
 # insertBLOB(2, "David", "E:\pynative\Python\photos\david.jpg", "E:\pynative\Python\photos\david_resume.txt")
