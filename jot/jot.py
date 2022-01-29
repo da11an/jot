@@ -52,11 +52,11 @@ class Jot:
             self.config['db_dir'] = self.JOT_DIR
             self.write_config(self.config)
             # TODO DELETE IN LATER VERSION--TO MIGRATE existing.sqlites to dat location
-            sourcefiles = os.listdir(self.JOT_DIR)
-            destinationpath = self.JOT_DIR / 'dat'
+            sourcefiles = os.listdir(self.SRC_DIR)
+            destinationpath = self.JOT_DIR
             for file in sourcefiles:
                 if file.endswith('.sqlite'):
-                    shutil.move(self.JOT_DIR / file, self.JOT_DIR / 'dat' / file)
+                    shutil.move(self.SRC_DIR / file, self.JOT_DIR / file)
 
         self.snippet_width = int(d['snippet_width']) # notes column print width
         self.DB_NAME = d['db_name']
