@@ -43,39 +43,30 @@ class Jot:
         with open(p, newline='') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                d[row['name']] = row['value']        
+                d[row['name']] = row['value'].strip()
         self.config = d
 
         if p == def_conf:
-            self.config['db_dir'] = self.JOT_DIR / "dat"
+            self.config['db_dir'] = self.JOT_DIR / 'dat'
+            self.config['db_dir'].mkdir(exist_ok=True)
             self.write_config(self.config)
+            # TODO DELETE IN LATER VERSION--TO MIGRATE existing.sqlites to dat location
+            sourcefiles = os.listdir(self.JOT_DIR)
+            destinationpath = self.JOT_DIR / 'dat'
+            for file in sourcefiles:
+                if file.endswith('.sqlite'):
+                    shutil.move(self.JOT_DIR / file, self.JOT_DIR / 'dat' / file)
+
+        self.snippet_width = int(d['snippet_width']) # notes column print width
+        self.DB_NAME = d['db_name']
+        self.DB_DIR = Path(d['db_dir'])
+        self.DB = self.DB_DIR / self.DB_NAME
         
         # see ansi 256 color codes: https://www.ditig.com/256-colors-cheat-sheet
         self.palette = [d['color_line'], d['color_note'], d['color_todo'],
                 d['color_done'], d['color_drop'], d['color_part'], d['color_id'],
                 d['color_default'], d['color_text']]
 
-        self.snippet_width = int(d['snippet_width']) # notes column print width
-        self.DB_NAME = d['db_name']
-        self.DB_DIR = Path(d['db_dir'])
-        self.DB = self.DB_DIR / self.DB_NAME
-        # ### Set DB dir to contents of DB_DIR if existing, otherwise, same as JOT_DIR
-        # try:
-        #     with open(self.JOT_DIR / "DB_DIR") as f:
-        #         self.DB_DIR = Path(f.read().strip())
-        # except FileNotFoundError:
-        #     self.DB_DIR = self.JOT_DIR
-        #     self.DB_DIR = self.JOT_DIR / "dat"
-        #     self.DB_DIR.mkdir(exist_ok=True)
-
-        ### Set DB_NAME to contents of DB_NAME if existing, otherwise, jot.sqlite
-        # try:
-        #     with open(self.DB_DIR / "DB_NAME") as f:
-        #         self.DB_NAME = f.read().strip()
-        # except FileNotFoundError:
-        #     self.DB_NAME = 'jot.sqlite'
-        # self.DB = self.DB_DIR / self.DB_NAME
-            
         #### windows config
         if platform.system() == 'Windows':
             self.EDITOR = d['win_editor']
@@ -121,16 +112,6 @@ class Jot:
             try:
                 self.conn = sqlite3.connect(self.DB)
                 self.cursor = self.conn.cursor()
-
-                # this block can be dropped once legacy versions are all updated
-                self.cursor.execute('update Notes set status_id = 1 where status_id is null;') # set default status = 1 where missing - this line can be dropped once legacy versions are all updated
-                try:
-                    self.cursor.execute('alter table Notes add column Priority int;') # this line can be dropped once legacy versions are all updated
-                    self.cursor.execute('alter table Notes add column Alias text;') # this line can be dropped once legacy versions are all updated
-                except:
-                    'nothing at all to do here, table already up to date'
-                self.conn.commit()
-
             except:
                 print ('attempting to connect to ' + self.JOT_DIR)
                 sys.exit(_("Connection to sqlite db failed!"))
