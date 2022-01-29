@@ -57,6 +57,11 @@ class Jot:
             for file in sourcefiles:
                 if file.endswith('.sqlite'):
                     shutil.move(self.SRC_DIR / file, self.JOT_DIR / file)
+            sourcefiles = os.listdir(self.SRC_DIR / 'dat')
+            destinationpath = self.JOT_DIR
+            for file in sourcefiles:
+                if file.endswith('.sqlite'):
+                    shutil.move(self.SRC_DIR / 'dat' / file, self.JOT_DIR / file)
 
         self.snippet_width = int(d['snippet_width']) # notes column print width
         self.DB_NAME = d['db_name']
