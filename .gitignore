@@ -1,3 +1,6 @@
-jot
-*.sqlite
-config.csv
+dat/config.csv
+dat/*.sqlite
+.DS_Store
+build/
+dist/
+*.egg-info
