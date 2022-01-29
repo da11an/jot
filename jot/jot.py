@@ -28,11 +28,13 @@ class Jot:
         self.main()
 
     def read_config(self):
-        ## RSD TODO: Think about where sqlite database goes when installed
-        self.JOT_DIR = Path(__file__).parent.parent
+        # Define jot dir under home directory
+        self.SRC_DIR = Path(__file__).parent
+        self.JOT_DIR = Path.home() / '.jot'
+        self.JOT_DIR.mkdir(exist_ok=True)
 
-        def_conf = self.JOT_DIR / 'jot' / 'default_config.csv'
-        conf = self.JOT_DIR / 'dat' / 'config.csv'
+        def_conf = self.SRC_DIR / 'default_config.csv'
+        conf = self.JOT_DIR / 'config.csv'
 
         if conf.exists():
             p = conf
@@ -47,8 +49,7 @@ class Jot:
         self.config = d
 
         if p == def_conf:
-            self.config['db_dir'] = self.JOT_DIR / 'dat'
-            self.config['db_dir'].mkdir(exist_ok=True)
+            self.config['db_dir'] = self.JOT_DIR
             self.write_config(self.config)
             # TODO DELETE IN LATER VERSION--TO MIGRATE existing.sqlites to dat location
             sourcefiles = os.listdir(self.JOT_DIR)
@@ -90,7 +91,7 @@ class Jot:
             conf_list.append({'name': key, 'value': val})
         fields = ['name', 'value']
 
-        with open(self.JOT_DIR / 'dat' / 'config.csv', 'w') as csvfile:
+        with open(self.JOT_DIR / 'config.csv', 'w') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames = fields)
             writer.writeheader()
             writer.writerows(conf_list)
@@ -104,7 +105,7 @@ class Jot:
             print(f"creating new database: {self.DB}")
             self.conn = sqlite3.connect(self.DB)
             self.cursor = self.conn.cursor()
-            sql_file = open(self.JOT_DIR / "jot/create_db.sql")
+            sql_file = open(self.SRC_DIR / "create_db.sql")
             sql_as_string = sql_file.read()
             self.cursor.executescript(sql_as_string)
             self.conn.commit()
@@ -112,9 +113,10 @@ class Jot:
             try:
                 self.conn = sqlite3.connect(self.DB)
                 self.cursor = self.conn.cursor()
+            # RSD TODO: Should explicitly catch exceptions
             except:
-                print ('attempting to connect to ' + self.JOT_DIR)
-                sys.exit(_("Connection to sqlite db failed!"))
+                print ('attempting to connect to ' + str(self.JOT_DIR))
+                sys.exit("Connection to sqlite db failed!")
 
     def set_db_dir(self, path):
         if os.path.exists(path):
@@ -597,13 +599,13 @@ class Jot:
         # Input
         if args.code or args.readme or args.sqlite or args.config:
             if args.code:
-                subprocess.call([self.EDITOR, self.JOT_DIR / 'jot' / 'jot.py'])
+                subprocess.call([self.EDITOR, self.SRC_DIR / 'jot.py'])
             if args.config:
-                subprocess.call([self.EDITOR, self.JOT_DIR / 'dat' / 'config.csv'])
+                subprocess.call([self.EDITOR, self.JOT_DIR / 'config.csv'])
             if args.readme:
-                subprocess.call([self.EDITOR, self.JOT_DIR / 'README.md'])
+                subprocess.call([self.EDITOR, self.SRC_DIR.parent / 'README.md'])
             if args.sqlite:
-                subprocess.call([self.EDITOR, self.JOT_DIR / 'jot' / 'create_db.sql'])
+                subprocess.call([self.EDITOR, self.SRC_DIR / 'create_db.sql'])
         elif args.note or (args.identifier and (args.status or args.date or args.priority or args.alias or args.parent)):
             self.input_note(description=args.note, status_id=args.status, due=args.date, priority=args.priority, alias=args.alias[:5] if args.alias else None, note_id=self.identifier_to_id(args.identifier), parent_id=args.parent)
         elif args.rm:
