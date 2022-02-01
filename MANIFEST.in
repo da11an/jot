@@ -1,2 +1,3 @@
 include LICENSE
 include jot/*sql
+include jot/default_config.csv
